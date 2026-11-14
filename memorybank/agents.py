@@ -1,17 +1,19 @@
 """Structured interpretation for Agent A and Agent B.
 
-These functions return objects only. They do not retrieve memory, approve a change,
-or call the purchasing service. The server supplies source kind and any memories.
-Model output cannot set user, agent, tenant, or team identity.
+The server supplies source kind, identity, and any memories. Model output cannot set
+user, agent, tenant, or team identity. submit_proposal forwards one proposal to
+propose_change and accepts only rejected or pending_review. It does not retrieve
+memory, approve a change, or call the purchasing service.
 """
 
 import json
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, model_validator
 
 from memorybank.llm import GeminiSettings, generate_structured
+from memorybank.memory_gateway import ServerIdentity
 
 PROPOSAL_INSTRUCTIONS = """
 You are Agent B, the supplier-onboarding assistant. Read one message and propose a
@@ -144,3 +146,59 @@ def interpret_purchase(
             "which was not supplied."
         )
     return action
+
+
+class ProposalResult(BaseModel):
+    proposal_id: str = Field(min_length=1)
+    status: Literal["rejected", "pending_review"]
+    reason: str = Field(min_length=1)
+
+
+class ProposalGateway(Protocol):
+    """The missing propose_change call. Person 1's method can replace a test fake."""
+
+    def propose_change(
+        self,
+        identity: ServerIdentity,
+        *,
+        policy_key: str,
+        expected_version: int,
+        content: str,
+        terms: dict,
+        source_ref: str,
+        source_kind: str,
+    ) -> dict: ...
+
+
+def submit_proposal(
+    message: str,
+    identity: ServerIdentity,
+    source_kind: str,
+    gateway: ProposalGateway,
+    *,
+    client: Any = None,
+    model: str | None = None,
+    settings: GeminiSettings | None = None,
+) -> ProposalResult:
+    """Interpret a message and submit that exact proposal. Identity comes from the server."""
+    if not isinstance(identity, ServerIdentity):
+        raise InterpretationError("A server-bound identity is required.")
+    proposal = interpret_proposal(
+        message,
+        source_kind,
+        client=client,
+        model=model,
+        settings=settings,
+    )
+    result = gateway.propose_change(
+        identity,
+        policy_key=proposal.policy_key,
+        expected_version=proposal.expected_version,
+        content=proposal.content,
+        terms=proposal.terms.model_dump(),
+        source_ref=proposal.source_ref,
+        source_kind=proposal.source_kind.value,
+    )
+    if not isinstance(result, dict) or result.get("status") not in {"rejected", "pending_review"}:
+        raise InterpretationError("propose_change cannot activate memory.")
+    return ProposalResult.model_validate(result)
