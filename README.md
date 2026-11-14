@@ -234,16 +234,17 @@ python -m pytest tests/test_checkpoint_one.py --atlas -q
 
 Setup creates five collections with strict shape validation and standard indexes. It refuses
 to silently replace a different validator or adopt existing unvalidated records. Seeding inserts
-five synthetic identities, the USD 5,000 policy, and its event. Repeating it preserves existing
+five synthetic identities, five demo memories, and a seed event per memory. Repeating it preserves existing
 records, disabled users, expiry, revocation, and policy history. The policy expires 24 hours after
 initial seeding; seeding again deliberately does not renew it.
 
-The six live tests create a uniquely named `memorybank_checkpoint_test_*` database and remove
+The eight live tests create a uniquely named `memorybank_checkpoint_test_*` database and remove
 only that database afterward. The Atlas database user needs permission to create and remove
 that temporary database as well as access the application database. Without `--atlas`, these
 tests are skipped; skips are not evidence of a passing live checkpoint.
 
-The tests check repeatable setup, non-destructive seeding, malformed-record rejection,
+The tests check repeatable setup, non-destructive seeding, search fixtures, forgotten-fixture
+preservation, malformed-record rejection,
 one-active-version and version uniqueness, deleted-record content removal, and refusal to
 adopt incompatible data. They do not yet prove authorization, search, or action governance.
 
@@ -257,6 +258,32 @@ gateway's proposal/review/retrieval/action-validation functions. Both sides shou
 seed IDs and agree on gateway function inputs/outputs before connecting the agents.
 
 Agent/server start commands will be added when those components exist.
+
+### Search demonstration data
+
+The seed script now inserts these five synthetic instructions (and preserves existing policy
+history if run again):
+
+| Memory ID | Instruction | Scope / state |
+|---|---|---|
+| `mem_northstar_v1` | Northstar purchases above USD 5,000 require finance approval. | Procurement, active |
+| `mem_bluebird_v1` | Bluebird purchases above USD 2,000 require finance approval. | Procurement, active |
+| `mem_cedar_office_v1` | Office-supply purchases from Cedar above USD 300 require finance approval. | Procurement, active |
+| `mem_marketing_v1` | Marketing purchases from BrightAds above USD 1,000 require finance approval. | Marketing, active; must not be exposed to procurement |
+| `mem_northstar_retired_v1` | Retired Northstar USD 20,000 purchasing instruction. | Procurement, superseded; never actionable |
+
+Cedar is an unrelated office-supplies example that fits the existing purchasing schema; onboarding
+instructions would need another policy type. The retired Northstar fixture has its own retired
+policy key. It is an explicitly synthetic distractor, not fabricated version history of the
+existing active v1. No existing Northstar record is overwritten or relinked.
+
+Try “Can I spend seven thousand dollars with Northstar without asking finance?” and a Bluebird
+purchase question after search is implemented. Search may return multiple candidates; the
+action gate must still check the actual supplier and policy type. Dataset tests do not prove
+search isolation or ranking. Embeddings and Vector Search remain to be implemented.
+
+Run `python -m pytest tests/test_seed_fixtures.py -q` for the local dataset check without cloud
+access. Run the Atlas command above for the eight database checks.
 
 ## Demo sequence
 

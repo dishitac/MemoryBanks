@@ -82,3 +82,32 @@ def test_setup_refuses_to_adopt_unvalidated_existing_records(atlas_db):
         setup_database(atlas_db)
     atlas_db.runs.delete_one({"_id": "legacy_run"})
     setup_database(atlas_db)
+
+
+def test_search_fixtures_have_private_and_retired_distractors(atlas_db):
+    seed_database(atlas_db)
+    assert atlas_db.memories.find_one({"_id": "mem_bluebird_v1"})["terms"] == {
+        "supplier_id": "bluebird",
+        "currency": "USD",
+        "max_without_approval": 2000,
+    }
+    assert atlas_db.memories.find_one({"_id": "mem_cedar_office_v1"})["status"] == "active"
+    assert atlas_db.memories.find_one({"_id": "mem_marketing_v1"})["team_id"] == "marketing"
+    retired = atlas_db.memories.find_one({"_id": "mem_northstar_retired_v1"})
+    assert retired["status"] == "superseded"
+    assert retired["terms"]["max_without_approval"] == 20000
+
+
+def test_reseed_preserves_forgotten_search_fixture(atlas_db):
+    seed_database(atlas_db)
+    atlas_db.memories.update_one(
+        {"_id": "mem_bluebird_v1"},
+        {
+            "$set": {"status": "deleted"},
+            "$unset": {field: "" for field in ("content", "terms", "provenance", "embedding")},
+        },
+    )
+    before = atlas_db.memories.find_one({"_id": "mem_bluebird_v1"})
+    assert seed_database(atlas_db) is False
+    assert atlas_db.memories.find_one({"_id": "mem_bluebird_v1"}) == before
+    assert atlas_db.memory_events.count_documents({"memory_id": "mem_bluebird_v1"}) == 1
