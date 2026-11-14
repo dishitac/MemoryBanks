@@ -253,11 +253,30 @@ The seed memory ID is `mem_northstar_v1`; its policy key is `supplier:northstar:
 Policies currently use whole-dollar nonnegative integer limits and USD. The policy has no
 embedding yet: adding a real Voyage embedding and Vector Search is checkpoint 2, not simulated.
 
-**Integration is not ready yet.** The partner handoff follows implementation and tests of the
+**The gateway is not connected yet.** The partner handoff follows implementation and tests of the
 gateway's proposal/review/retrieval/action-validation functions. Both sides should use these
 seed IDs and agree on gateway function inputs/outputs before connecting the agents.
 
-Agent/server start commands will be added when those components exist.
+### Purchasing service
+
+On branch `feature/agents-purchasing`, from the repository root:
+
+```bash
+python -m uvicorn purchasing_service.app:app --port 8001
+```
+
+This process does not connect to Atlas. It stores approval requests and draft orders in
+`purchasing_service/data/purchasing.sqlite` (gitignored). `PURCHASING_DB_PATH` overrides that
+file. The same idempotency key and payload returns the original record. A different payload
+for that key is rejected. Read a record back with `GET /approval-requests/{id}` or
+`GET /draft-orders/{id}`.
+
+```bash
+python -m pytest tests/test_purchasing_service.py -q
+```
+
+These tests do not use `--atlas`. Application-server and agent commands will be added when
+those components exist.
 
 ### Search demonstration data
 
@@ -301,7 +320,7 @@ access. Run the Atlas command above for the eight database checks.
 - [ ] User/agent identity and gateway permissions
 - [ ] Proposal review and atomic versioned correction
 - [ ] Agent A and B tool flows
-- [ ] Purchasing persistence, idempotency, and read-back verification
+- [x] Purchasing persistence, idempotency, and read-back verification
 - [ ] Events/runs tied to memory versions
 - [ ] Attack and legitimate-correction acceptance checks
 - [ ] Cross-team search and ID isolation

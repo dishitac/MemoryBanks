@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["memorybank*", "ticket_service*"]
+include = ["memorybank*", "ticket_service*", "purchasing_service*"]
 
 [tool.ruff]
 line-length = 100

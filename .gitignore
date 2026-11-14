@@ -21,6 +21,9 @@ test_mongodb.py
 # Demo ticket service local data
 ticket_service/data/
 
+# Mock purchasing service local data
+purchasing_service/data/
+
 # OS / editor
 .DS_Store
 
