@@ -6,7 +6,10 @@ Read [README.md](README.md) first. This file is named `agent.md` as requested; t
 
 Build **MemoryBank**, a two-agent shared-memory governance prototype for **Memory You Can Govern**. Use the supplier-purchasing scenario, not ticket routing. Agent B proposes memory updates; Agent A retrieves approved memories and proposes purchases; server code controls trust and execution.
 
-The repository currently contains design documentation, not an implemented application. Keep status and runnable instructions accurate.
+Checkpoint 1 implements collections, schema validation, standard indexes, non-destructive seeding,
+and six real Atlas tests. The gateway, embeddings, agents, and purchasing integration are not yet
+implemented. Keep status and runnable instructions accurate. Use the seed IDs and commands in
+README. Do not reseed by deleting or resetting existing policies.
 
 ## Organizer requirements
 

@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Design and implementation target. Application code and setup scripts are not present yet. Features below are planned unless checked as complete.
+**Status:** Database foundation implemented and tested (checkpoint 1). Agent workflows, gateway, embeddings, and external actions remain planned. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -221,7 +221,42 @@ Prerequisites and planned setup:
 5. Build the Vector Search index matching the embedding model and wait until queryable.
 6. Start purchasing service and application server, then run acceptance checks.
 
-Exact installation/seed/test/start commands will be added when code exists. These are not currently runnable project instructions.
+### Checkpoint 1: database foundation
+
+On branch `feature/memory-governance`, with your virtual environment active and `MONGODB_URI`
+configured in `.env`, run from the repository root:
+
+```bash
+python -m scripts.setup_db
+python -m scripts.seed
+python -m pytest tests/test_checkpoint_one.py --atlas -q
+```
+
+Setup creates five collections with strict shape validation and standard indexes. It refuses
+to silently replace a different validator or adopt existing unvalidated records. Seeding inserts
+five synthetic identities, the USD 5,000 policy, and its event. Repeating it preserves existing
+records, disabled users, expiry, revocation, and policy history. The policy expires 24 hours after
+initial seeding; seeding again deliberately does not renew it.
+
+The six live tests create a uniquely named `memorybank_checkpoint_test_*` database and remove
+only that database afterward. The Atlas database user needs permission to create and remove
+that temporary database as well as access the application database. Without `--atlas`, these
+tests are skipped; skips are not evidence of a passing live checkpoint.
+
+The tests check repeatable setup, non-destructive seeding, malformed-record rejection,
+one-active-version and version uniqueness, deleted-record content removal, and refusal to
+adopt incompatible data. They do not yet prove authorization, search, or action governance.
+
+Identity IDs are `employee`, `finance_admin`, `other_team_user`, `agent_a`, and `agent_b`.
+The seed memory ID is `mem_northstar_v1`; its policy key is `supplier:northstar:purchasing`.
+Policies currently use whole-dollar nonnegative integer limits and USD. The policy has no
+embedding yet: adding a real Voyage embedding and Vector Search is checkpoint 2, not simulated.
+
+**Integration is not ready yet.** The partner handoff follows implementation and tests of the
+gateway's proposal/review/retrieval/action-validation functions. Both sides should use these
+seed IDs and agree on gateway function inputs/outputs before connecting the agents.
+
+Agent/server start commands will be added when those components exist.
 
 ## Demo sequence
 
@@ -234,7 +269,7 @@ Exact installation/seed/test/start commands will be added when code exists. Thes
 
 ## Implementation status
 
-- [ ] Atlas collections, validators, indexes, and seeds
+- [x] Atlas collections, validators, standard indexes, and seeds (checkpoint 1)
 - [ ] Scoped Vector Search and primary-record rechecks
 - [ ] User/agent identity and gateway permissions
 - [ ] Proposal review and atomic versioned correction
