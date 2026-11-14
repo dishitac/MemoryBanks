@@ -21,9 +21,20 @@ query_text, supplier_id=None)` with a server-created `ServerIdentity`; response 
 only `memory_id`, `version`, `policy_key`, `content`, and `terms`. `get_memory` provides protected
 direct-ID reads. Four local index tests, thirteen Atlas read-boundary tests, and three real
 Voyage/Vector Search tests cover this checkpoint. Tests call Voyage only with `--atlas --search`.
-The partner can integrate retrieval now; write/review operations and `validate_action` are not
-implemented, so retrieval must not authorize purchases. The mock purchasing service is already
-implemented by the partner; agents and coordinated dispatch remain unfinished.
+Checkpoint 3 adds `MemoryWriter` in `memorybank/proposals.py`, gateway proposal/review methods,
+and a shared single-process `policy_lock`. Valid employee suggestions remain pending; claiming
+finance authority as an employee is rejected. Only an in-scope finance administrator on the
+Agent B server path may explicitly review. `source_kind` uses the partner's existing enum;
+the server, not the model, establishes its value. Active text is generated from reviewed typed
+terms and embedded before an atomic correction. Proposals are immutable through the gateway;
+payload fingerprints detect out-of-band edits. Approval preserves the expiry deadline.
+Fourteen local and thirteen Atlas tests cover the workflow. The real-Voyage demonstration
+`python -m scripts.demo_review` uses/removes only a disposable demo database.
+The partner can integrate retrieval, proposal creation and explicit review now. Keep review
+out of model tools. `validate_action` is not implemented, so retrieval must not authorize
+purchases. Future dispatch/lifecycle code must reuse `policy_lock` to coordinate with review.
+The purchasing service and Gemini interpretation helpers are implemented by the partner;
+end-user orchestration and coordinated dispatch remain unfinished.
 Keep status and runnable instructions accurate. Use the seed IDs and commands in
 README. Do not reseed by deleting or resetting existing policies.
 

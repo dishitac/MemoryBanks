@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation, Voyage embeddings, scoped Vector Search, and the gateway read path are implemented and tested. The separate mock purchasing service also exists. Memory-write governance, agent workflows, and coordinated action dispatch remain planned. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation, Voyage embeddings, scoped Vector Search, protected proposals, and administrator-reviewed atomic correction are implemented and tested. The mock purchasing service and Gemini interpretation helpers also exist. Final action validation, coordinated dispatch, lifecycle mutation controls, and the end-user flow remain unfinished. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -261,9 +261,9 @@ The seed memory ID is `mem_northstar_v1`; its policy key is `supplier:northstar:
 Policies currently use whole-dollar nonnegative integer limits and USD. Seeding does not generate
 embeddings; use the separate preparation and search steps below.
 
-**Read-path handoff is ready:** the partner can connect `retrieve_memories` using the contract
-below. Proposal/review and action-validation functions remain unfinished; retrieval does not
-authorize dispatch. Both sides must use server-bound identities, not model-provided identity.
+**Read and proposal/review handoff are ready:** the partner can connect the gateway calls
+documented below. Final action validation remains unfinished; retrieval or a proposed action
+does not authorize dispatch. Both sides must use server-bound identities, not model-provided identity.
 
 ### Purchasing service
 
@@ -385,7 +385,8 @@ memory = gateway.get_memory(identity, memory_id)
 Invalid/disabled identities raise `AccessDenied`. Invalid arguments raise `ValueError`.
 Index readiness/configuration issues raise `RuntimeError`; provider/network failures propagate
 for the server to report without logging credentials. This read path does not supply HTTP
-authentication, write approval, run auditing, or final action authorization.
+authentication, run auditing, or final action authorization. Write approval is implemented in
+checkpoint 3 below.
 
 #### Tests
 
@@ -406,8 +407,98 @@ retrieve procurement's Northstar policy. Temporary test databases are removed af
 requests and temporary index creation, which can take several minutes. Free-tier limits or
 index readiness failures are reported as failures, not converted to mocked successes.
 
-Read-path integration is now possible. The next checkpoint implements proposals, protected
-review, atomic correction, and action validation. Do not wire purchase dispatch to retrieval alone.
+Read-path integration is possible. Do not wire purchase dispatch to retrieval alone.
+
+### Checkpoint 3: protected proposals and explicit review
+
+Run the safe demonstration:
+
+```bash
+python -m scripts.demo_review
+```
+
+This creates a disposable `memorybank_review_demo_*` database, seeds synthetic policies,
+generates real Voyage embeddings, and demonstrates rejected finance impersonation, an employee
+suggestion awaiting review, denied employee approval, and explicit administrator approval of
+a USD 10,000 version 2. The old version becomes superseded and unavailable through the gateway.
+The temporary database is removed afterward; main application policies are unchanged. The
+command makes two batched/document Voyage requests and executes no purchases.
+
+#### Partner write/review contract
+
+The same `MemoryGateway(db, embedder)` now provides:
+
+```python
+result = gateway.propose_change(
+    identity, policy_key, expected_version, content, terms, source_ref, source_kind
+)
+# {proposal_id, status: rejected | pending_review, reason}
+
+proposal = gateway.get_proposal(admin_identity, result["proposal_id"])
+# Restricted review payload: submitted content, effective_content, terms, provenance, status.
+
+approved = gateway.approve_proposal(admin_identity, result["proposal_id"], expected_version)
+# {proposal_id, status: approved, reason, memory_id, version}
+
+rejected = gateway.reject_proposal(admin_identity, proposal_id, expected_version)
+# {proposal_id, status: rejected, reason}; no replacement memory is created.
+```
+
+For proposal and review routes, the bound agent must have the `onboarding_agent` role (`agent_b`
+in the seed). Review additionally requires an enabled in-scope `finance_admin` user. Keep
+approval/rejection out of model tools: they are explicit server-side administrator actions.
+The server's ingestion route supplies `source_kind`, matching the partner's existing enum:
+`employee_message`, `supplier_document`, or `finance_admin`. Never forward an unchecked model
+claim about source authority. Finance source claims from employees are rejected and logged.
+
+Valid employee suggestions and supplier-document claims may be proposed, but stay pending
+until an administrator explicitly approves them. Even an administrator's chat proposal is not
+approval. Unlimited/invalid limits, mismatched suppliers, unavailable/stale policies, and
+unsupported source kinds produce rejected proposals; invalid top-level argument types raise
+`ValueError`. Rejected attempts do not modify active memory. Their restricted proposal record
+and event retain the submitting identities and reason. This is policy enforcement, not proof
+of malicious intent or a general truth detector.
+
+Purchasing terms are limited to a known target's supplier, USD, and nonnegative whole-dollar
+limits. Active content is generated from these reviewed terms; arbitrary submitted wording
+is retained only in the proposal. Reviewers must see both submitted and effective content.
+No free-form instruction is promoted wholesale into executable policy.
+
+Proposals have no edit API. A payload fingerprint detects accidental/out-of-band content edits;
+editing requires a new proposal and review. This is not tamper-proof against a database admin
+who can replace both payload and fingerprint. `expected_version` refers to the policy version
+being replaced; a changed/reviewed proposal or stale/expired target raises `StaleProposal`.
+
+Approval embeds the exact effective content before opening the transaction. It then rechecks
+authority, proposal fingerprint/status, and the current policy under a shared per-policy
+single-process lock. A transaction supersedes v1, inserts v2, records review, and writes the
+audit event together. Provider failure leaves the old policy active. Transaction failure
+rolls back the entire correction. A concurrent approval cannot silently overwrite a winner.
+The replacement preserves the original expiry deadline; approval does not silently renew an
+expired policy. Explicit renewal is not implemented. Search indexing of v2 is asynchronous;
+reads may briefly return no policy, but must never expose superseded v1 as usable.
+
+Future lifecycle mutations and final action dispatch must use the same `policy_lock` helper.
+This lock protects the single-process demo only. HTTP authentication and final action
+validation/dispatch coordination still need to be connected by the application server.
+
+#### Checkpoint tests
+
+```bash
+python -m pytest tests/test_proposal_rules.py -v
+python -m pytest tests/test_proposal_workflow.py --atlas -v
+```
+
+Fourteen local checks cover canonical policy generation and invalid terms/versions. Thirteen
+real Atlas tests cover pending isolation, fake finance authority, invalid unlimited limits,
+review permissions, supplier-source review, legitimate v2 approval, stale/edited proposals,
+changes during embedding, provider failure, transaction rollback, concurrent approvals, and
+wrong scope/agent/expired targets. These Atlas tests simulate embedding responses; real Voyage
+approval was verified separately with `scripts.demo_review`. They never modify application data.
+
+Partner integration can now connect Agent B's proposal output (`model_dump(mode="json")`,
+using server-bound identity and source kind) and an explicit administrator review route.
+The next checkpoint is `validate_action`; purchase dispatch must wait for that gate.
 
 ## Demo sequence
 
@@ -424,7 +515,7 @@ review, atomic correction, and action validation. Do not wire purchase dispatch 
 - [x] Real Voyage embeddings for five synthetic memories and guarded preparation (checkpoint 2A)
 - [x] Scoped Vector Search and primary-record rechecks (checkpoint 2B)
 - [ ] User/agent identity and gateway permissions
-- [ ] Proposal review and atomic versioned correction
+- [x] Proposal review and atomic versioned correction (checkpoint 3)
 - [ ] Agent A and B tool flows
 - [x] Purchasing persistence, idempotency, and read-back verification
 - [ ] Events/runs tied to memory versions

@@ -1,4 +1,4 @@
-"""Read side of the memory gateway. Import only from trusted server/tool code.
+"""Governed memory access. Import only from trusted server/tool code.
 
 ServerIdentity comes from a server session, never an LLM or an unverified HTTP body.
 Database checks bind both identities to that scope; this is not a login implementation.
@@ -31,7 +31,7 @@ class MemoryGateway:
         self.db = db.with_options(read_preference=ReadPreference.PRIMARY)
         self.embedder = embedder
 
-    def _scope(self, identity):
+    def _scope(self, identity, *, session=None):
         if not isinstance(identity, ServerIdentity):
             raise AccessDenied("A server-bound identity is required")
         if any(
@@ -47,7 +47,8 @@ class MemoryGateway:
                 "enabled": True,
                 **scope,
                 "role": {"$in": ["employee", "finance_admin"]},
-            }
+            },
+            session=session,
         )
         agent = self.db.principals.find_one(
             {
@@ -56,7 +57,8 @@ class MemoryGateway:
                 "enabled": True,
                 **scope,
                 "role": {"$in": ["purchasing_agent", "onboarding_agent"]},
-            }
+            },
+            session=session,
         )
         if not user or not agent:
             raise AccessDenied("User and agent must be enabled and authorized for this scope")
@@ -165,3 +167,27 @@ class MemoryGateway:
         if not isinstance(memory_id, str) or not memory_id:
             raise ValueError("memory_id must be nonempty text")
         return self._read_current(scope, {"_id": memory_id})
+
+    def propose_change(
+        self, identity, policy_key, expected_version, content, terms, source_ref, source_kind
+    ):
+        from memorybank.proposals import MemoryWriter
+
+        return MemoryWriter(self).propose_change(
+            identity, policy_key, expected_version, content, terms, source_ref, source_kind
+        )
+
+    def get_proposal(self, identity, proposal_id):
+        from memorybank.proposals import MemoryWriter
+
+        return MemoryWriter(self).get_proposal(identity, proposal_id)
+
+    def approve_proposal(self, identity, proposal_id, expected_version):
+        from memorybank.proposals import MemoryWriter
+
+        return MemoryWriter(self).review(identity, proposal_id, expected_version, approve=True)
+
+    def reject_proposal(self, identity, proposal_id, expected_version):
+        from memorybank.proposals import MemoryWriter
+
+        return MemoryWriter(self).review(identity, proposal_id, expected_version, approve=False)
