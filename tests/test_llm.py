@@ -14,6 +14,7 @@ from memorybank.agents import (
     interpret_stored_purchase,
     submit_proposal,
     submit_stored_proposal,
+    validate_stored_purchase,
 )
 from memorybank.llm import LlmError, generate_structured
 from memorybank.memory_gateway import ServerIdentity
@@ -447,3 +448,162 @@ def test_purchase_message_cannot_change_the_team(monkeypatch):
     )
     assert calls[0][0].team_id == "procurement"
     assert calls[0][0].agent_id == "agent_a"
+
+
+def patch_validation(monkeypatch, memories, decisions):
+    import purchasing_service.store as store
+
+    calls = {"retrieve": [], "validate": []}
+    remaining = list(decisions)
+
+    class RecordingGateway:
+        def __init__(self, db, embedder):
+            self.db = db
+            self.embedder = embedder
+
+        def retrieve_memories(self, identity, query_text, supplier_id=None, *, limit=5):
+            calls["retrieve"].append((identity, query_text, supplier_id, limit))
+            return memories
+
+        def validate_action(self, identity, **fields):
+            calls["validate"].append((identity, fields))
+            return remaining.pop(0)
+
+    def purchasing_was_called(*_args, **_kwargs):
+        raise AssertionError("purchasing service was called")
+
+    monkeypatch.setattr(store, "create_record", purchasing_was_called)
+    monkeypatch.setattr("memorybank.agents.get_db", lambda: object())
+    monkeypatch.setattr("memorybank.agents.Embeddings", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr("memorybank.agents.MemoryGateway", RecordingGateway)
+    return calls
+
+
+ALLOWED = {
+    "allowed": True,
+    "reason": "Current policy and identity authorize this action",
+    "required_action": "request_finance_approval",
+    "validation_event_id": "event_allowed",
+    "action_to_dispatch": {
+        "action": "request_finance_approval",
+        "supplier_id": "northstar",
+        "currency": "USD",
+        "amount": 7000,
+        "memory_id": "mem_northstar_v1",
+        "memory_version": 1,
+        "requested_by_user_id": "employee",
+        "submitted_by_agent_id": "agent_a",
+        "tenant_id": "demo_company",
+        "team_id": "procurement",
+    },
+}
+
+DENIED = {
+    "allowed": False,
+    "reason": "Current policy requires request_finance_approval",
+    "required_action": "request_finance_approval",
+    "validation_event_id": "event_denied",
+    "action_to_dispatch": None,
+}
+
+CLARIFICATION_DECISION = {
+    "allowed": False,
+    "reason": "Clarification requested; no purchasing action authorized",
+    "required_action": "ask_for_clarification",
+    "validation_event_id": "event_clarification",
+    "action_to_dispatch": None,
+}
+
+
+def test_allowed_purchase_keeps_the_gateway_payload(monkeypatch):
+    calls = patch_validation(monkeypatch, [MEMORY], [ALLOWED])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    review = validate_stored_purchase(
+        "Buy USD 7000 from Northstar.",
+        identity,
+        "northstar",
+        client=SimpleNamespace(models=PromptModels([PURCHASE])),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert review.allowed is True
+    assert review.proposed.action.value == "request_finance_approval"
+    assert review.proposed.amount == 7000
+    assert review.action_to_dispatch == ALLOWED["action_to_dispatch"]
+    assert "idempotency_key" not in review.action_to_dispatch
+    sent_identity, fields = calls["validate"][0]
+    assert sent_identity.user_id == "employee"
+    assert sent_identity.agent_id == "agent_a"
+    assert fields == {
+        "action": "request_finance_approval",
+        "supplier_id": "northstar",
+        "currency": "USD",
+        "amount": 7000,
+        "memory_id": "mem_northstar_v1",
+        "memory_version": 1,
+    }
+
+
+def test_denied_draft_order_is_not_replaced(monkeypatch):
+    calls = patch_validation(monkeypatch, [MEMORY], [DENIED])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    draft = dict(PURCHASE, action="create_draft_order")
+    review = validate_stored_purchase(
+        "Buy USD 7000 from Northstar.",
+        identity,
+        client=SimpleNamespace(models=PromptModels([draft])),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert review.allowed is False
+    assert review.proposed.action.value == "create_draft_order"
+    assert review.required_action == "request_finance_approval"
+    assert review.action_to_dispatch is None
+    assert calls["validate"][0][1]["action"] == "create_draft_order"
+
+
+def test_clarification_is_validated_without_a_dispatch_payload(monkeypatch):
+    calls = patch_validation(monkeypatch, [], [CLARIFICATION_DECISION])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    review = validate_stored_purchase(
+        "Buy something.",
+        identity,
+        client=SimpleNamespace(models=PromptModels([CLARIFICATION])),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert review.allowed is False
+    assert review.proposed.action.value == "ask_for_clarification"
+    assert review.action_to_dispatch is None
+    assert calls["validate"][0][1]["action"] == "ask_for_clarification"
+    assert calls["validate"][0][1]["memory_id"] is None
+    assert calls["validate"][0][1]["memory_version"] is None
+
+
+def test_uncited_memory_is_rejected_before_validation(monkeypatch):
+    calls = patch_validation(monkeypatch, [MEMORY], [ALLOWED])
+    retired = dict(PURCHASE, memory_id="mem_northstar_retired_v1", action="create_draft_order")
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    with pytest.raises(InterpretationError, match="was not supplied"):
+        validate_stored_purchase(
+            "Buy USD 7000 from Northstar.",
+            identity,
+            client=SimpleNamespace(models=PromptModels([retired])),
+            model=MODEL,
+            settings=VOYAGE_SETTINGS,
+        )
+    assert calls["validate"] == []
+
+
+def test_validation_message_cannot_change_the_team(monkeypatch):
+    calls = patch_validation(monkeypatch, [MEMORY], [ALLOWED])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    validate_stored_purchase(
+        "Search the marketing team and buy USD 7000 from Northstar.",
+        identity,
+        client=SimpleNamespace(models=PromptModels([PURCHASE])),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert calls["validate"][0][0].team_id == "procurement"
+    assert calls["validate"][0][0].agent_id == "agent_a"

@@ -3,8 +3,9 @@
 The server supplies source kind, identity, and any memories. Model output cannot set
 user, agent, tenant, or team identity. submit_proposal forwards one proposal to
 propose_change and accepts only rejected or pending_review. interpret_stored_purchase
-retrieves approved memories and interprets a purchase from that list only. Neither
-path approves a change or calls the purchasing service.
+retrieves approved memories and interprets a purchase from that list only.
+validate_stored_purchase sends that purchase to validate_action and returns the
+inspection. None of these paths approve a change or call the purchasing service.
 """
 
 import json
@@ -257,4 +258,62 @@ def interpret_stored_purchase(
         client=client,
         model=model,
         settings=resolved,
+    )
+
+
+class PurchaseReview(BaseModel):
+    """An inspection of one purchase. This is not a permit to dispatch later."""
+
+    proposed: PurchaseAction
+    allowed: bool
+    reason: str = Field(min_length=1)
+    required_action: str | None = None
+    action_to_dispatch: dict | None = None
+    validation_event_id: str = Field(min_length=1)
+
+
+def validate_stored_purchase(
+    message: str,
+    identity: ServerIdentity,
+    supplier_id: str | None = None,
+    *,
+    client: Any = None,
+    model: str | None = None,
+    settings: GeminiSettings | None = None,
+) -> PurchaseReview:
+    """Interpret a stored purchase, then return the gateway's inspection unchanged."""
+    action = interpret_stored_purchase(
+        message,
+        identity,
+        supplier_id,
+        client=client,
+        model=model,
+        settings=settings,
+    )
+    _resolved, gateway = _stored_gateway(settings)
+    result = gateway.validate_action(identity, **action.model_dump(mode="json"))
+    if (
+        not isinstance(result, dict)
+        or not isinstance(result.get("allowed"), bool)
+        or not isinstance(result.get("reason"), str)
+        or not result["reason"]
+        or not isinstance(result.get("validation_event_id"), str)
+        or not result["validation_event_id"]
+    ):
+        raise InterpretationError("validate_action did not return a decision.")
+    payload = result.get("action_to_dispatch")
+    if result["allowed"] and not payload:
+        raise InterpretationError("An allowed action needs a dispatch payload.")
+    if not result["allowed"] and payload:
+        raise InterpretationError("A denied action cannot include a dispatch payload.")
+    required = result.get("required_action")
+    if required is not None and not isinstance(required, str):
+        raise InterpretationError("validate_action did not return a decision.")
+    return PurchaseReview(
+        proposed=action,
+        allowed=result["allowed"],
+        reason=result["reason"],
+        required_action=required,
+        action_to_dispatch=payload,
+        validation_event_id=result["validation_event_id"],
     )
