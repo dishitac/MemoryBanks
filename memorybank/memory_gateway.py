@@ -191,3 +191,41 @@ class MemoryGateway:
         from memorybank.proposals import MemoryWriter
 
         return MemoryWriter(self).review(identity, proposal_id, expected_version, approve=False)
+
+    def validated_action(
+        self,
+        identity,
+        action,
+        supplier_id=None,
+        currency=None,
+        amount=None,
+        memory_id=None,
+        memory_version=None,
+    ):
+        """Hold the policy lock across final validation and synchronous server dispatch.
+
+        Use as a `with` block. Never await inside it or dispatch after exiting the block.
+        The caller must execute only when allowed, use the normalized payload, add a server
+        idempotency key, read back the external record, and save the run outcome.
+        """
+        from memorybank.actions import ActionValidator
+
+        return ActionValidator(self).guarded(
+            identity, action, supplier_id, currency, amount, memory_id, memory_version
+        )
+
+    def validate_action(
+        self,
+        identity,
+        action,
+        supplier_id=None,
+        currency=None,
+        amount=None,
+        memory_id=None,
+        memory_version=None,
+    ):
+        """Inspection-only decision. Use validated_action for actual server dispatch."""
+        with self.validated_action(
+            identity, action, supplier_id, currency, amount, memory_id, memory_version
+        ) as result:
+            return result

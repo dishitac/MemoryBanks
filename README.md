@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation, Voyage embeddings, scoped Vector Search, protected proposals, and administrator-reviewed atomic correction are implemented and tested. The mock purchasing service and Gemini interpretation helpers also exist. Final action validation, coordinated dispatch, lifecycle mutation controls, and the end-user flow remain unfinished. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation, embeddings, scoped retrieval, protected review/correction, and final action validation with a shared dispatch guard are implemented and tested. The purchasing service and Gemini interpretation helpers also exist. Full Gemini/server/HTTP orchestration, run receipts, lifecycle mutation controls, and the end-user interface remain unfinished. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -218,7 +218,7 @@ python -m pytest tests/test_llm.py -q
 
 Those tests do not call Gemini. A live call still needs `LLM_API_KEY`.
 
-`submit_proposal` is Agent B's submission step. The server passes a `ServerIdentity` and `source_kind`. The function sends the interpreted proposal to `propose_change` and accepts only `rejected` or `pending_review`. That write method is not on the gateway yet, so tests use a fake. Agent B does not retrieve memory, approve a proposal, or create a purchasing record.
+`submit_proposal` is Agent B's submission step. The server passes a `ServerIdentity` and `source_kind`. The function sends the interpreted proposal to `propose_change` and accepts only `rejected` or `pending_review`. The gateway now implements that method; interpretation unit tests still use a fake. Agent B does not retrieve memory, approve a proposal, or create a purchasing record.
 
 After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Use synthetic demo data.
 
@@ -263,9 +263,10 @@ The seed memory ID is `mem_northstar_v1`; its policy key is `supplier:northstar:
 Policies currently use whole-dollar nonnegative integer limits and USD. Seeding does not generate
 embeddings; use the separate preparation and search steps below.
 
-**Read and proposal/review handoff are ready:** the partner can connect the gateway calls
-documented below. Final action validation remains unfinished; retrieval or a proposed action
-does not authorize dispatch. Both sides must use server-bound identities, not model-provided identity.
+**Gateway handoff is ready:** the partner can connect retrieval, proposal/review, and final
+action validation using the contracts below. Actual dispatch must happen inside the synchronous
+`validated_action` context; a previously returned validation result is not a reusable permit.
+Both sides must use server-bound identities, not model-provided identity.
 
 ### Purchasing service
 
@@ -500,7 +501,94 @@ approval was verified separately with `scripts.demo_review`. They never modify a
 
 Partner integration can now connect Agent B's proposal output (`model_dump(mode="json")`,
 using server-bound identity and source kind) and an explicit administrator review route.
-The next checkpoint is `validate_action`; purchase dispatch must wait for that gate.
+Checkpoint 4 below adds final validation. The full application must still connect guarded
+dispatch, read-back verification, and run recording.
+
+### Checkpoint 4: final action gate and guarded dispatch
+
+```bash
+python -m scripts.demo_action_gate
+```
+
+This developer demo uses real Voyage/Atlas data and the partner's actual SQLite purchasing
+store in-process. It blocks a USD 7,000 draft order under the USD 5,000 policy, stores and
+reads back an approval request, approves a USD 10,000 v2, blocks reuse of v1, and stores/reads
+back a draft order using v2. It removes its temporary Atlas database and SQLite file afterward.
+Main policies and purchases are unchanged. This is not yet the complete Gemini/HTTP app.
+
+#### Action contract for the partner
+
+```python
+# purchase is the partner's PurchaseAction; identity comes from the server session.
+request = purchase.model_dump(mode="json")
+preview = gateway.validate_action(identity, **request)
+# Inspection only: do not dispatch later using this preview.
+
+with gateway.validated_action(identity, **request) as gate:
+    if gate["allowed"]:
+        payload = dict(gate["action_to_dispatch"])
+        # Partner's synchronous adapter dispatches and verifies HERE, before leaving the block.
+        # Map payload.pop("action") to the allowlisted purchasing endpoint, add a server-owned
+        # idempotency key, POST, read back, compare fields, and record the run receipt/outcome.
+    else:
+        # No purchasing call. Show gate["reason"] / gate["required_action"].
+        pass
+```
+
+Both calls accept `identity, action, supplier_id, currency, amount, memory_id, memory_version`.
+Results contain `allowed`, `reason`, `action_to_dispatch` (a dictionary or None),
+`required_action`, and `validation_event_id`. A denied action is never silently converted into
+a different external action. `required_action` is guidance: an appropriate replacement proposal
+must be validated again. `ask_for_clarification` returns allowed false and no dispatch payload;
+the server presents clarification without calling the purchasing service.
+
+Only enabled in-scope users with a purchasing-agent context (`agent_a`) can validate purchase
+actions. Invalid identity/agent authority raises `AccessDenied`. Unsupported actions, invalid
+amounts/currencies, wrong suppliers, stale versions, and unusable memories return denied
+decisions. Amounts are positive whole USD dollars within signed 64-bit range; no boolean,
+string, or fractional coercion. At or below the limit the required action is a draft order;
+above it the required action is a finance-approval request. The server independently enforces
+this rule and never trusts the model's arithmetic or its claim of authorization.
+
+Allowed payloads contain the checked action/supplier/currency/amount/memory reference plus
+server-derived `requested_by_user_id`, `submitted_by_agent_id`, `tenant_id`, and `team_id`.
+The partner supplies the idempotency key; it must not come from the model. Do not merge unchecked
+model fields over the normalized payload. Scope, current version, lifecycle, dates, policy kind,
+and embedding/content consistency are rechecked on primary records. Pending proposals cannot
+support actions. Date/identity checks run again after audit I/O before dispatch control is yielded.
+
+The guard holds the same per-policy lock used by corrections. Corrections wait until the
+guarded block finishes; after a correction commits, the superseded version cannot authorize a
+new action. Keep the block short and dispatch immediately: no LLM calls, sleeping, queueing, or
+`await` inside it. With an async server, run the whole synchronous block in a worker thread;
+an ordinary thread lock held across async awaits does not provide this guarantee. Use one
+application-server process for the demo; independent worker processes do not share these locks.
+Future expire/revoke/forget operations must use the same lock as well.
+
+Validation writes `action_allowed` / `action_blocked` metadata events without copying policy
+content. These are decisions, not execution receipts or proof of completion. Audit failure
+prevents entering dispatch. A pre-audit allowance can be followed by a final denial if the
+deadline passes; use the returned final decision/event ID. The partner still needs to save
+external receipts and verified/failed/uncertain outcomes in `runs`. Completed external actions
+cannot be undone simply by revoking a memory afterward.
+
+#### Tests
+
+```bash
+python -m pytest tests/test_action_rules.py -v
+python -m pytest tests/test_action_gate.py --atlas -v
+```
+
+Thirteen local tests check strict numeric bounds/types. Twenty-three Atlas tests cover policy
+limits, normalized identity, unsupported/malformed actions, supplier/version mismatch, scope,
+disabled identities, unusable/expired policies, v2 behavior, audit failure, deadline changes
+during audit, and a concurrent correction waiting for guarded dispatch. They use simulated
+embedding responses and no real purchasing calls. The developer demo separately verifies
+real Voyage plus actual SQLite writes/read-back. No application data is modified by tests.
+
+**Main integration checkpoint reached:** Person 2 can now wire Agent A to retrieval, model
+interpretation, guarded action validation, HTTP purchasing dispatch, verification, and runs.
+Person 1's next task is expire/revoke/forget mutation controls and their deletion tests.
 
 ## Demo sequence
 
@@ -516,10 +604,12 @@ The next checkpoint is `validate_action`; purchase dispatch must wait for that g
 - [x] Atlas collections, validators, standard indexes, and seeds (checkpoint 1)
 - [x] Real Voyage embeddings for five synthetic memories and guarded preparation (checkpoint 2A)
 - [x] Scoped Vector Search and primary-record rechecks (checkpoint 2B)
-- [ ] User/agent identity and gateway permissions
+- [x] User/agent identity and read/proposal/action permissions
 - [x] Proposal review and atomic versioned correction (checkpoint 3)
 - [ ] Agent A and B tool flows
 - [x] Purchasing persistence, idempotency, and read-back verification
+- [x] Final action validation and shared check-to-dispatch guard (checkpoint 4)
+- [ ] Full Gemini/server/HTTP purchasing orchestration and run receipts
 - [ ] Events/runs tied to memory versions
 - [ ] Attack and legitimate-correction acceptance checks
 - [x] Cross-team search and ID isolation (read path)
