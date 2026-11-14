@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation implemented and tested (checkpoint 1). Agent workflows, gateway, embeddings, and external actions remain planned. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation and Voyage embedding preparation implemented and tested. Agent workflows, gateway authorization, Vector Search retrieval, and external actions remain planned. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -250,8 +250,8 @@ adopt incompatible data. They do not yet prove authorization, search, or action 
 
 Identity IDs are `employee`, `finance_admin`, `other_team_user`, `agent_a`, and `agent_b`.
 The seed memory ID is `mem_northstar_v1`; its policy key is `supplier:northstar:purchasing`.
-Policies currently use whole-dollar nonnegative integer limits and USD. The policy has no
-embedding yet: adding a real Voyage embedding and Vector Search is checkpoint 2, not simulated.
+Policies currently use whole-dollar nonnegative integer limits and USD. Seeding does not generate
+embeddings; use the separate preparation step below. Vector Search is not implemented yet.
 
 **The gateway is not connected yet.** The partner handoff follows implementation and tests of the
 gateway's proposal/review/retrieval/action-validation functions. Both sides should use these
@@ -299,10 +299,37 @@ existing active v1. No existing Northstar record is overwritten or relinked.
 Try “Can I spend seven thousand dollars with Northstar without asking finance?” and a Bluebird
 purchase question after search is implemented. Search may return multiple candidates; the
 action gate must still check the actual supplier and policy type. Dataset tests do not prove
-search isolation or ranking. Embeddings and Vector Search remain to be implemented.
+search isolation or ranking. Vector Search remains to be implemented.
 
 Run `python -m pytest tests/test_seed_fixtures.py -q` for the local dataset check without cloud
 access. Run the Atlas command above for the eight database checks.
+
+### Checkpoint 2A: real embedding preparation
+
+With `VOYAGE_API_KEY`, `VOYAGE_MODEL`, and `EMBEDDING_DIM` configured, run:
+
+```bash
+python -m scripts.embed_memories
+python -m pytest tests/test_embeddings.py -q
+python -m pytest tests/test_embedding_storage.py --atlas -q
+```
+
+The preparation script sends the five existing synthetic fixture texts to Voyage in one batch,
+then saves their real vectors and model/dimension/content-hash metadata in Atlas. Document
+embeddings use Voyage's `document` mode; the query helper uses `query` mode with the same model.
+It validates response count, vector dimensions, finite numeric values, and nonzero vectors.
+It rejects blank text and does not silently truncate input or substitute fake embeddings.
+
+Repeated preparation skips unchanged, already embedded records. A guarded update refuses to
+attach an old vector if content, version, scope, or status changed during the API call.
+Missing/revoked/deleted fixtures are skipped; existing content, validity, and status are never
+reset. Retired distractors are deliberately embedded so future tests can prove retrieval filters
+them out. Embedding a record does not authorize access or make it actionable.
+
+Nine local tests check API boundaries. Two Atlas storage tests use explicitly simulated provider
+responses to test preservation and revocation races; they do not test Voyage quality or search.
+Separately, real Voyage preparation succeeded for all five application fixtures using `voyage-4`
+and 1,024 dimensions. Index creation and real scoped search are checkpoint 2B and remain unfinished.
 
 ## Demo sequence
 
@@ -316,6 +343,7 @@ access. Run the Atlas command above for the eight database checks.
 ## Implementation status
 
 - [x] Atlas collections, validators, standard indexes, and seeds (checkpoint 1)
+- [x] Real Voyage embeddings for five synthetic memories and guarded preparation (checkpoint 2A)
 - [ ] Scoped Vector Search and primary-record rechecks
 - [ ] User/agent identity and gateway permissions
 - [ ] Proposal review and atomic versioned correction
