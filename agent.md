@@ -75,7 +75,7 @@ Examples:
 6. Keep CLI/web controls minimal. No Streamlit or dashboard-first development.
 7. Add paused-action revocation, model-based risk assessment, and change streams only after the core works.
 
-Suggested stack: Python/FastAPI/PyMongo, structured-output model, embedding API, and SQLite for a separate mock purchasing service. Keep dependencies small; no distributed workers or framework expansion without need.
+Stack: Python/FastAPI/PyMongo, Gemini through `google-genai`, Voyage embeddings, and SQLite for a separate mock purchasing service. Default model: `gemini-3.5-flash-lite`, configured through `LLM_MODEL`; key comes from `LLM_API_KEY`. Both agents share the client/provider but retain separate instructions, conversations, and tools. Handle free-tier rate limits with bounded retries and a clear user message; do not silently switch to a paid model. Keep dependencies small; no distributed workers or framework expansion without need.
 
 ## Non-negotiable governance rules
 

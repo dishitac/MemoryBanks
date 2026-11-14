@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     voyage_model: str = "voyage-4"
     embedding_dim: int = 1024
 
-    # LLM for structured routing actions
-    llm_provider: str = "anthropic"
+    # Gemini for structured memory proposals and purchasing actions.
+    llm_provider: str = "gemini"
     llm_api_key: str = ""
-    llm_model: str = ""
+    llm_model: str = "gemini-3.5-flash-lite"
 
     # Services
     ticket_service_url: str = "http://localhost:8001"

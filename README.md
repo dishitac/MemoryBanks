@@ -206,7 +206,11 @@ This is a conditional budget assuming Atlas access and API keys work early. Cut 
 
 ## Suggested stack and setup status
 
-Suggested stack: Python, FastAPI, PyMongo, an embedding API, a structured-output/tool-calling model, minimal HTML/JavaScript or CLI, and SQLite persistence for the separate mock purchasing service. Provider/model and pinned dependencies remain to be selected. No Streamlit.
+Stack: Python, FastAPI, PyMongo, Voyage embeddings, Gemini via the `google-genai` SDK, minimal HTML/JavaScript or CLI, and SQLite persistence for the separate mock purchasing service. No Streamlit.
+
+Gemini configuration uses `LLM_PROVIDER=gemini`, `LLM_API_KEY` for the Gemini key, and `LLM_MODEL=gemini-3.5-flash-lite`. Both agents can share the same key and model. Google lists free-tier text input/output for this model; actual access and quotas depend on your project. See [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite).
+
+After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Settings loading alone does not test Gemini access; agent calls remain to be implemented. Handle rate limits with bounded retries and a clear wait/retry message, never automatic paid-model fallback. Use synthetic demo data.
 
 Prerequisites and planned setup:
 
