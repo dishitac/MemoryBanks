@@ -222,6 +222,8 @@ Those tests do not call Gemini. A live call still needs `LLM_API_KEY`.
 
 `interpret_stored_purchase` is Agent A's retrieval step. The server passes a `ServerIdentity`, using `agent_a`, and an optional `supplier_id`. It calls `retrieve_memories` and gives only those memories to `interpret_purchase`. A purchase action must cite one of them. It does not validate the purchase or create an order.
 
+`validate_stored_purchase` sends that interpreted purchase to `validate_action`. The server identity is unchanged. A denied action stays denied, even when the gateway names a different required action. The result is an inspection, not a permit to dispatch later. It does not create an order.
+
 After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Use synthetic demo data.
 
 Prerequisites and planned setup:
