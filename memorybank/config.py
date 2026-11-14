@@ -30,8 +30,10 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "gemini-3.5-flash-lite"
 
-    # Services
-    ticket_service_url: str = "http://localhost:8001"
+    # Services. The purchasing service is a separate process and reads PURCHASING_DB_PATH
+    # itself; these values are for the application server that will call it later.
+    purchasing_service_url: str = "http://localhost:8001"
+    purchasing_db_path: str = "purchasing_service/data/purchasing.sqlite"
     api_port: int = 8000
 
 
