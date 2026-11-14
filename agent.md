@@ -56,8 +56,17 @@ The partner must store run memory references (IDs/versions), not raw memory-bear
 content, or embeddings, and must not write stale context back after forgetting. Record final
 receipts inside guarded dispatch. Deletion covers existing controlled scoped copies only;
 backups, external records/logs, independent caches and encoded/unlinked fragments are excluded.
-The purchasing service and Gemini interpretation helpers are implemented by the partner;
-end-user orchestration and coordinated dispatch remain unfinished.
+The purchasing service and Gemini interpretation helpers are implemented by the partner.
+The partner has now merged `memorybank/dispatch.py`: guarded HTTP dispatch/read-back and
+metadata-only run recording are available as connected backend functions. The main application
+UI/server routes are still missing. `tests/test_acceptance_live.py --atlas --acceptance` rehearses
+the connected functions using real Gemini/Voyage/Vector Search and a separate temporary HTTP
+purchasing process. Default tests skip this provider-consuming scenario. Database routing and
+real query-vector caching are test-harness injections, not mocked security/model outcomes.
+Use the README's final interface checklist once the partner's UI exists; do not describe a
+backend function test as a completed UI test. Preserve provider failures instead of faking passes.
+The connected acceptance rehearsal passed with real providers on 2026-11-14 in 102.80 seconds.
+It verifies the exercised backend scenario only; main interface/session-route acceptance remains.
 Keep status and runnable instructions accurate. Use the seed IDs and commands in
 README. Do not reseed by deleting or resetting existing policies.
 
