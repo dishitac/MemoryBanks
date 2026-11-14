@@ -220,6 +220,8 @@ Those tests do not call Gemini. A live call still needs `LLM_API_KEY`.
 
 `submit_proposal` is Agent B's submission step. The server passes a `ServerIdentity` and `source_kind`. The function sends the interpreted proposal to `propose_change` and accepts only `rejected` or `pending_review`. `submit_stored_proposal` builds `MemoryGateway` from the Atlas and Voyage settings and passes that gateway in. It needs a reachable database. The tests pass a fake gateway and do not open Atlas. Agent B does not retrieve memory, approve a proposal, or create a purchasing record. A proposal for an unknown policy key comes back `rejected`.
 
+`interpret_stored_purchase` is Agent A's retrieval step. The server passes a `ServerIdentity`, using `agent_a`, and an optional `supplier_id`. It calls `retrieve_memories` and gives only those memories to `interpret_purchase`. A purchase action must cite one of them. It does not validate the purchase or create an order.
+
 After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Use synthetic demo data.
 
 Prerequisites and planned setup:

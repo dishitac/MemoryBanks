@@ -2,8 +2,9 @@
 
 The server supplies source kind, identity, and any memories. Model output cannot set
 user, agent, tenant, or team identity. submit_proposal forwards one proposal to
-propose_change and accepts only rejected or pending_review. It does not retrieve
-memory, approve a change, or call the purchasing service.
+propose_change and accepts only rejected or pending_review. interpret_stored_purchase
+retrieves approved memories and interprets a purchase from that list only. Neither
+path approves a change or calls the purchasing service.
 """
 
 import json
@@ -207,6 +208,13 @@ def submit_proposal(
     return ProposalResult.model_validate(result)
 
 
+def _stored_gateway(settings: GeminiSettings | None):
+    """Build the real gateway from Atlas and Voyage settings."""
+    resolved = settings if settings is not None else get_settings()
+    embedder = Embeddings(resolved.voyage_api_key, resolved.voyage_model, resolved.embedding_dim)
+    return resolved, MemoryGateway(get_db(), embedder)
+
+
 def submit_stored_proposal(
     message: str,
     identity: ServerIdentity,
@@ -217,14 +225,35 @@ def submit_stored_proposal(
     settings: GeminiSettings | None = None,
 ) -> ProposalResult:
     """Submit through the real MemoryGateway. The server still supplies identity."""
-    resolved = settings if settings is not None else get_settings()
-    embedder = Embeddings(resolved.voyage_api_key, resolved.voyage_model, resolved.embedding_dim)
-    gateway = MemoryGateway(get_db(), embedder)
+    resolved, gateway = _stored_gateway(settings)
     return submit_proposal(
         message,
         identity,
         source_kind,
         gateway,
+        client=client,
+        model=model,
+        settings=resolved,
+    )
+
+
+def interpret_stored_purchase(
+    message: str,
+    identity: ServerIdentity,
+    supplier_id: str | None = None,
+    *,
+    client: Any = None,
+    model: str | None = None,
+    settings: GeminiSettings | None = None,
+) -> PurchaseAction:
+    """Retrieve approved memories, then interpret the purchase from that list only."""
+    if not isinstance(identity, ServerIdentity):
+        raise InterpretationError("A server-bound identity is required.")
+    resolved, gateway = _stored_gateway(settings)
+    memories = gateway.retrieve_memories(identity, message, supplier_id)
+    return interpret_purchase(
+        message,
+        memories,
         client=client,
         model=model,
         settings=resolved,

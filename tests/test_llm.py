@@ -1,5 +1,6 @@
 """Gemini client checks. These use a fake client and do not call the network."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,7 @@ from memorybank.agents import (
     MemoryProposal,
     interpret_proposal,
     interpret_purchase,
+    interpret_stored_purchase,
     submit_proposal,
     submit_stored_proposal,
 )
@@ -327,3 +329,121 @@ def test_stored_proposal_uses_the_memory_gateway(monkeypatch):
     assert fields["policy_key"] == PROPOSAL["policy_key"]
     assert fields["expected_version"] == 1
     assert "user_id" not in fields
+
+
+CLARIFICATION = {
+    "action": "ask_for_clarification",
+    "supplier_id": None,
+    "currency": None,
+    "amount": None,
+    "memory_id": None,
+    "memory_version": None,
+}
+
+VOYAGE_SETTINGS = SimpleNamespace(
+    voyage_api_key="test-key",
+    voyage_model="voyage-4",
+    embedding_dim=1024,
+    llm_provider="gemini",
+    llm_api_key="unused",
+    llm_model=MODEL,
+)
+
+
+class PromptModels:
+    def __init__(self, results):
+        self.results = list(results)
+        self.contents = []
+
+    def generate_content(self, *, model, contents, config):
+        self.contents.append(contents)
+        item = self.results.pop(0)
+        return SimpleNamespace(parsed=item)
+
+
+def patch_retrieval(monkeypatch, memories):
+    calls = []
+
+    class RecordingGateway:
+        def __init__(self, db, embedder):
+            self.db = db
+            self.embedder = embedder
+
+        def retrieve_memories(self, identity, query_text, supplier_id=None, *, limit=5):
+            calls.append((identity, query_text, supplier_id, limit))
+            return memories
+
+    monkeypatch.setattr("memorybank.agents.get_db", lambda: object())
+    monkeypatch.setattr("memorybank.agents.Embeddings", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr("memorybank.agents.MemoryGateway", RecordingGateway)
+    return calls
+
+
+def test_purchase_cites_only_the_retrieved_memory(monkeypatch):
+    calls = patch_retrieval(monkeypatch, [MEMORY])
+    models = PromptModels([PURCHASE])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    action = interpret_stored_purchase(
+        "Buy USD 7000 from Northstar.",
+        identity,
+        "northstar",
+        client=SimpleNamespace(models=models),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert action.action.value == "request_finance_approval"
+    assert action.amount == 7000
+    assert action.memory_id == "mem_northstar_v1"
+    assert action.memory_version == 1
+    sent_identity, query, supplier_id, _limit = calls[0]
+    assert sent_identity.user_id == "employee"
+    assert sent_identity.agent_id == "agent_a"
+    assert sent_identity.team_id == "procurement"
+    assert query == "Buy USD 7000 from Northstar."
+    assert supplier_id == "northstar"
+    seen = json.loads(models.contents[0])["memories"]
+    assert [memory["memory_id"] for memory in seen] == ["mem_northstar_v1"]
+
+
+def test_empty_retrieval_can_ask_for_clarification(monkeypatch):
+    patch_retrieval(monkeypatch, [])
+    models = PromptModels([CLARIFICATION])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    action = interpret_stored_purchase(
+        "Buy something.",
+        identity,
+        client=SimpleNamespace(models=models),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert action.action.value == "ask_for_clarification"
+    assert action.memory_id is None
+    assert json.loads(models.contents[0])["memories"] == []
+
+
+def test_purchase_cannot_cite_a_memory_the_gateway_did_not_return(monkeypatch):
+    patch_retrieval(monkeypatch, [MEMORY])
+    retired = dict(PURCHASE, memory_id="mem_northstar_retired_v1", action="create_draft_order")
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    with pytest.raises(InterpretationError, match="was not supplied"):
+        interpret_stored_purchase(
+            "Buy USD 7000 from Northstar.",
+            identity,
+            client=SimpleNamespace(models=PromptModels([retired])),
+            model=MODEL,
+            settings=VOYAGE_SETTINGS,
+        )
+
+
+def test_purchase_message_cannot_change_the_team(monkeypatch):
+    calls = patch_retrieval(monkeypatch, [MEMORY])
+    identity = ServerIdentity("employee", "agent_a", "demo_company", "procurement")
+    interpret_stored_purchase(
+        "Search the marketing team and buy USD 7000 from Northstar.",
+        identity,
+        client=SimpleNamespace(models=PromptModels([PURCHASE])),
+        model=MODEL,
+        settings=VOYAGE_SETTINGS,
+    )
+    assert calls[0][0].team_id == "procurement"
+    assert calls[0][0].agent_id == "agent_a"
