@@ -758,6 +758,83 @@ sessions; typing “I am an administrator” is never a login or permission chan
 If the interface lacks one of these controls or records, report the missing integration rather
 than replacing the result with a scripted screenshot or a claim that the agent performed it.
 
+### Demo page
+
+Start the purchasing service, then the demo page, in two terminals:
+
+```bash
+PURCHASING_DB_PATH=/tmp/memorybank-demo-purchasing.sqlite python -m uvicorn purchasing_service.app:app --port 8001
+python -m demo_app
+```
+
+Open http://localhost:8000. Startup creates a uniquely named disposable Atlas database, seeds
+and embeds it with real Voyage, and builds the search index. The page shows "Preparing" until
+Northstar v1 is retrievable, which can take a few minutes. The database is dropped when the app
+stops; the configured application database and `.env` are not changed. Purchases use real Gemini
+and go only to the local mock purchasing service. Run one app process.
+
+The session menu is the only way to choose an identity. The server maps `employee`,
+`finance_admin`, and `other_team_user` to the seeded identities and sets Agent B's source kind
+itself. Request bodies and chat text cannot set a user, agent, role, team, or source kind. Agent
+B receives the current policy key and version from the server, so a message does not need to
+name them.
+
+The page follows the Shopper, Muse, and Instinct story in [demo.md](demo.md). Instinct is
+Agent A, Muse is Agent B, and the Shopper uses two visible sessions: `employee` for purchases
+and Muse, and `finance_admin` as the authorized reviewer for approval and forgetting.
+`other_team_user` is the other scope. Results use the `demo.md` layouts with the actual ids.
+"Forget all policy versions" forgets every Northstar version this app has seen, then clears the
+displayed content.
+
+The story uses the ordinary seed, so it runs on every fresh start: v1 at USD 5,000, a USD 7,000
+purchase, and a USD 10,000 correction. Forgetting is final for that database; restart the app
+for a fresh one before presenting again.
+
+Story walkthrough:
+
+1. As Shopper (employee), send "Please prepare a USD 7,000 purchase from Northstar." to
+   Instinct. Approval required, citing v1.
+2. Send "Suggest automatic Northstar purchases up to USD 10,000." to Muse. Pending review. Send
+   the same purchase again: still approval required under v1.
+3. Switch to Shopper (authorized reviewer), show proposals, and click "Approve, replacing v1".
+   Wait for the status panel to stop saying the memory is becoming searchable, switch back to
+   employee, and send the same purchase: verified mock draft order citing v2.
+4. Switch to Other scope and send the purchase or read `mem_northstar_v2`: access denied. As
+   the authorized reviewer, click "Forget all policy versions". As employee, send the purchase
+   once more: clarification, with no new purchasing record.
+
+How each checklist step maps to the page (the lookups, expiry and revocation, and idempotency
+controls are under "Checklist controls"):
+
+1. Choose Shopper (employee), then send the purchase to Instinct. The result shows the outcome,
+   memory id and version, purchasing record id, and run id and status.
+2. As employee, send the USD 1,000,000 request to Muse. Showing, approving, and rejecting
+   proposals are denied for this session. Send the purchase again and check the status panel.
+3. Choose Shopper (authorized reviewer), send the USD 10,000 correction to Muse, show proposals,
+   read the submitted text and effective instruction, then click Approve.
+4. Wait until the status panel stops saying the memory is becoming searchable, then send the
+   purchase again.
+5. Not available on the page. Instinct cites only memories retrieved for the current request, so
+   there is no control to send a stale-v1 or wrong-supplier citation by hand. The gateway tests
+   and the acceptance rehearsal cover that check. Report it as missing from the interface.
+6. Choose Other scope. Instinct, Muse, and memory lookups are denied, and the status panel shows
+   no procurement memory.
+7. As the authorized reviewer, use Expire, Revoke, or Forget under Memory versions, then send
+   the purchase again. Expect clarification and no record id. Read the run by id to see redaction.
+8. Read any run id under Direct lookups: user, agent, team, memory id and version, validation
+   event id, status, and purchasing record id. Validation alone is never labeled verified.
+9. As the authorized reviewer, replay a purchasing record id. The same record id comes back.
+   This is a service-level check only.
+
+Errors appear in red. A Gemini rate limit shows the wait and the model name. A denied action,
+moved version, unreadable request, or unconfirmed purchasing call says that nothing changed.
+
+```bash
+python -m pytest tests/test_demo_app.py -q
+```
+
+These route tests use fakes: no Gemini, Atlas, Voyage, or purchasing process.
+
 ## Implementation status
 
 - [x] Atlas collections, validators, standard indexes, and seeds (checkpoint 1)

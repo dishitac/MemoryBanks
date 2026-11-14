@@ -103,17 +103,19 @@ def execute_stored_purchase(
     model: str | None = None,
     settings: GeminiSettings | None = None,
     purchasing: Any = None,
+    gateway: Any = None,
 ) -> PurchaseExecution:
     """Interpret a purchase, then post and read it back only inside the guard."""
+    resolved, gateway = _stored_gateway(settings, gateway)
     action = interpret_stored_purchase(
         message,
         identity,
         supplier_id,
+        gateway=gateway,
         client=client,
         model=model,
-        settings=settings,
+        settings=resolved,
     )
-    resolved, gateway = _stored_gateway(settings)
     owns_client = purchasing is None
     if purchasing is None:
         buyer = HttpPurchasingClient(resolved.purchasing_service_url)

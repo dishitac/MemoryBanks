@@ -28,7 +28,10 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["memorybank*", "purchasing_service*"]
+include = ["memorybank*", "purchasing_service*", "demo_app*"]
+
+[tool.setuptools.package-data]
+demo_app = ["page.html"]
 
 [tool.ruff]
 line-length = 100
