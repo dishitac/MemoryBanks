@@ -229,3 +229,18 @@ class MemoryGateway:
             identity, action, supplier_id, currency, amount, memory_id, memory_version
         ) as result:
             return result
+
+    def expire_memory(self, identity, memory_id, expected_version):
+        from memorybank.lifecycle import MemoryLifecycle
+
+        return MemoryLifecycle(self).change(identity, memory_id, expected_version, "expire")
+
+    def revoke_memory(self, identity, memory_id, expected_version):
+        from memorybank.lifecycle import MemoryLifecycle
+
+        return MemoryLifecycle(self).change(identity, memory_id, expected_version, "revoke")
+
+    def forget_memory(self, identity, memory_id, expected_version):
+        from memorybank.lifecycle import MemoryLifecycle
+
+        return MemoryLifecycle(self).change(identity, memory_id, expected_version, "forget")

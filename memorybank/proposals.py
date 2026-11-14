@@ -194,22 +194,37 @@ class MemoryWriter:
 
         def save(session):
             self._onboarding(identity, session=session)
-            self.db.memory_proposals.insert_one(proposal, session=session)
+            stored = dict(proposal)
+            # A lifecycle operation may have removed the target since initial validation.
+            # Do not persist content from a late/in-flight proposal after forgetting.
+            if not self._target(scope, policy_key, expected_version, session=session):
+                stored.update(status="rejected", reason="Target policy is no longer current/valid")
+                for field in ("content", "terms", "effective_content", "source_ref", "source_kind"):
+                    stored.pop(field, None)
+                stored["payload_hash"] = payload_hash(stored)
+            self.db.memory_proposals.insert_one(stored, session=session)
             self._event(
                 identity,
                 scope,
-                f"proposal_{status}",
-                reason=reason,
+                f"proposal_{stored['status']}",
+                reason=stored["reason"],
                 session=session,
                 proposal_id=proposal["_id"],
                 policy_key=policy_key,
             )
+            return {
+                "proposal_id": stored["_id"],
+                "status": stored["status"],
+                "reason": stored["reason"],
+            }
 
-        with self.db.client.start_session() as session:
-            session.with_transaction(
-                save, read_concern=ReadConcern("snapshot"), write_concern=WriteConcern("majority")
-            )
-        return {"proposal_id": proposal["_id"], "status": status, "reason": reason}
+        with policy_lock(self.db, scope, policy_key):
+            with self.db.client.start_session() as session:
+                return session.with_transaction(
+                    save,
+                    read_concern=ReadConcern("snapshot"),
+                    write_concern=WriteConcern("majority"),
+                )
 
     def get_proposal(self, identity, proposal_id):
         scope = self._reviewer(identity)
@@ -217,6 +232,8 @@ class MemoryWriter:
         proposal = self.db.memory_proposals.find_one({"_id": proposal_id, **scope})
         if not proposal:
             return None
+        if proposal["status"] == "deleted":
+            return proposal  # Metadata-only tombstone; no reviewable payload remains.
         # There is no edit operation. Any payload edit requires a new proposal/review.
         if proposal.get("payload_hash") != payload_hash(proposal):
             raise StaleProposal("Proposal contents changed; submit a new proposal")
