@@ -224,6 +224,8 @@ Those tests do not call Gemini. A live call still needs `LLM_API_KEY`.
 
 `validate_stored_purchase` sends that interpreted purchase to `validate_action`. The server identity is unchanged. A denied action stays denied, even when the gateway names a different required action. The result is an inspection, not a permit to dispatch later. It does not create an order.
 
+`execute_stored_purchase` interprets the purchase, then enters `validated_action`. Only an allowed action is posted to the purchasing service, and the record is read back before the guard ends. A denial saves a blocked or clarification run and creates no purchasing record. The server creates the idempotency key. Tests pass a fake purchasing client and do not start the service.
+
 After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Use synthetic demo data.
 
 Prerequisites and planned setup:
