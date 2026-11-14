@@ -2,7 +2,9 @@
 
 This is the agreed presentation outline and spoken script for Person 2 to use when building
 the interface. It is not a runnable terminal script. The governance backend exists; the
-tailored USD 0 fixture, terminal presentation, and interface wiring still need implementation.
+terminal presentation and interface wiring still need implementation. Reuse the existing
+Northstar USD 5,000 baseline, USD 7,000 request, and USD 10,000 correction. No new policy
+shape or tailored seed fixture is required.
 Do not display the expected outcomes below as if they were returned by a live run.
 
 ## The story
@@ -15,7 +17,7 @@ Use three clearly labeled identities throughout:
 
 | Display name | Responsibility | Existing server binding |
 | --- | --- | --- |
-| Shopper | Requests headphones; explicitly reviews the proposed limit | Purchase: `employee` + `agent_a`; review: `finance_admin` + `agent_b` |
+| Shopper | Requests a Northstar purchase; explicitly reviews the proposed limit | Purchase: `employee` + `agent_a`; review: `finance_admin` + `agent_b` |
 | Instinct | Retrieves approved memory and proposes the purchasing action | Agent A, `agent_a` |
 | Muse | Interprets the proposed memory change; cannot approve it | Agent B, `agent_b`, initiated by `employee` |
 
@@ -28,23 +30,24 @@ all identities and source kinds; user text and model output cannot change them.
 
 ## Prepare before the timer starts
 
-1. Create a uniquely named disposable Atlas database. Never reset existing application history
-   or change the configured application database to obtain these outcomes.
-2. Set up validators and indexes, seed the demo principals, and prepare a fresh Northstar policy
-   with `supplier_id=northstar`, `currency=USD`, `max_without_approval=0`, version 1, and a future
-   expiry. The ordinary seed currently starts at USD 5,000: it is not this tailored fixture.
-   Prepare the fixture at initialization, before embedding, rather than editing an activated
-   policy behind the gateway. Person 1 owns this fixture preparation.
-3. Embed the actual policy with Voyage, create the Vector Search index, and wait until v1 is
-   retrievable through the gateway. Keep canonical supplier-policy text in storage; “Ask me
-   before buying” is the short display explanation of the actual USD 0 terms.
+1. Reuse the existing demo database if Northstar v1 is active, unexpired, and still has its
+   original USD 5,000 limit. Confirm this before presenting. Previous approval, expiry, or
+   forgetting may have changed it; ordinary seeding does not reset that history.
+2. If existing records cannot supply that baseline, use the existing setup/seed procedure in
+   a uniquely named disposable database. Do not overwrite old history or extend an activated
+   policy's expiry behind the gateway. The ordinary seed already provides the required
+   `supplier_id=northstar`, `currency=USD`, `max_without_approval=5000`, version 1 policy.
+3. Reuse existing embeddings and the search index if ready. Otherwise prepare them with the
+   existing Voyage/index helpers. Confirm v1 is retrievable through the gateway. Its approved
+   content says Northstar purchases above USD 5,000 require finance approval.
 4. Start the purchasing service with a separate disposable SQLite database. Start one demo
    application process. The service persists mock approval requests and draft orders only.
-5. Bind the supplier to Northstar in server-owned scenario context. Display “Headphones from
-   Northstar — USD 180.” The current action schema does not store a headphones SKU or cart;
-   headphones are the narrative, while supplier, amount, and currency are the checked fields.
-6. Open Atlas to this disposable database's `memories` and `runs` collections. Keep the
-   database alive through the Atlas inspection; drop only this database when the demo ends.
+5. Bind the supplier to Northstar in server-owned scenario context. Display “Northstar purchase
+   — USD 7,000.” Supplier, amount, and currency are the checked purchasing fields.
+6. Open Atlas to the selected demo database's `memories` and `runs` collections. Keep it alive
+   through the Atlas inspection. Drop it on cleanup only if this run created it as disposable;
+   never drop the existing application database. The final forgetting step changes demo data,
+   so this story cannot be replayed on the same forgotten records by simply reseeding.
 7. Clear previous visible demo results and use fresh agent conversations. Check provider
    availability without creating an extra order. Do not print credentials.
 
@@ -67,15 +70,15 @@ Show the three names and the active employee session.
 Read and display the approved memory through the gateway:
 
 ```text
-Approved memory v1: Ask me before buying.
-Automatic purchase limit: USD 0
+Approved memory v1: Ask for approval above USD 5,000.
+Automatic purchase limit: USD 5,000
 Supplier: Northstar
 Memory ID: <actual v1 ID>
 ```
 
 Shopper requests exactly:
 
-> “Get me these headphones for USD 180.”
+> “Please prepare a USD 7,000 purchase from Northstar.”
 
 Send this message to Agent A with the server-bound Northstar supplier context. On the actual
 verified approval-request result, display:
@@ -88,21 +91,21 @@ Purchasing record: <actual approval-request ID>
 Run: <actual run ID> — verified
 ```
 
-Say: “The approved limit is zero, so Instinct asks first.”
+Say: “The purchase exceeds the approved USD 5,000 limit, so Instinct asks first.”
 
 ### 30–45 seconds: Muse proposes a change
 
-Ask Muse to suggest automatic Northstar purchases up to USD 200. Supply the current policy
+Ask Muse to suggest automatic Northstar purchases up to USD 10,000. Supply the current policy
 key, expected version 1, and terms from server context. Bind the source to `employee_message`.
 Do not let Muse claim finance authority or invoke review.
 
 After the gateway persists the proposal, show:
 
 ```text
-Muse → Suggest automatic purchases up to USD 200
+Muse → Suggest automatic purchases up to USD 10,000
 Proposal: <actual proposal ID>
 Proposal status: PENDING REVIEW
-Active memory: v1 — USD 0
+Active memory: v1 — USD 5,000
 ```
 
 Repeat the identical Shopper request through Instinct. Read back the new mock approval request
@@ -119,7 +122,7 @@ Say: “A suggestion is stored, but it has no authority yet.”
 ### 45–65 seconds: the Shopper explicitly approves
 
 Switch visibly to the authorized Shopper reviewer session. Show the stored proposal's
-submitted text, effective instruction, supplier, currency, USD 200 limit, and expected v1.
+submitted text, effective instruction, supplier, currency, USD 10,000 limit, and expected v1.
 Require a separate human command or click; sending a chat message is not approval.
 
 Example interaction for the future terminal runner, not an existing CLI command:
@@ -133,7 +136,7 @@ Approve proposal <actual proposal ID>, replacing v1? [approve / cancel]
 Call `approve_proposal` with the exact proposal ID and expected version 1. Only after success:
 
 ```text
-Shopper → Approved the USD 200 limit
+Shopper → Approved the USD 10,000 limit
 Memory v1 → Superseded — <actual v1 ID>
 Memory v2 → Active — <actual v2 ID>
 ```
@@ -145,7 +148,7 @@ Switch back to the Shopper purchase session and repeat the identical request onc
 
 ```text
 Instinct → Mock draft order saved and verified
-Amount: USD 180
+Amount: USD 7,000
 Supporting memory: v2 — <actual v2 ID>
 Purchasing record: <actual draft-order ID>
 Run: <actual run ID> — verified
@@ -220,7 +223,7 @@ labels. Do not add a framework, Streamlit, new dependency, or external assistant
 8. Keep the disposable runtime injectable so local interface tests use fakes and cannot
    accidentally provision Atlas or call Gemini/Voyage.
 
-Person 1 owns the tailored fixture and any required backend governance changes. Person 2 owns
+Person 1 owns backend governance and checks that the existing baseline is usable. Person 2 owns
 interface/session wiring and the small agent/dispatch integration changes already agreed.
 Do not modify schema, seed, gateway, proposals, actions, lifecycle, or the acceptance test as
 part of interface work without coordinating with Person 1.
@@ -228,5 +231,5 @@ part of interface work without coordinating with Person 1.
 The 90-second story is a presentation subset. Preserve all nine checks in the README's
 “Final interface checklist for both teammates,” including stale/unrelated citations,
 expiry/revocation, denied employee review, full evidence, and service-level idempotency.
-The USD 5,000 / USD 10,000 acceptance fixture stays unchanged; test the USD 0 / USD 200
-presentation fixture separately. Mark interface completion only after live checks pass.
+The USD 5,000 / USD 10,000 acceptance fixture stays unchanged and matches this presentation.
+Mark interface completion only after live checks pass.
