@@ -682,16 +682,17 @@ the final run status. Those end-user integrations remain to be completed with Pe
 
 The planned presentation is a **90-second terminal demo with Shopper, Muse, and Instinct**.
 See [demo.md](demo.md) for the narration script, real-result output requirements, preparation,
-and the interface handoff for Person 2. This is a presentation plan; the tailored fixture and
-terminal runner are not implemented yet. The existing backend acceptance rehearsal below
-continues to use the USD 5,000 / USD 10,000 supplier scenario.
+and the interface handoff for Person 2. This is a presentation plan; the terminal runner is not
+implemented yet. It reuses the existing Northstar data shapes and USD 5,000 / USD 10,000
+supplier scenario exercised by the backend acceptance rehearsal below. No tailored fixture
+is required. Existing records can be reused if v1 is still active, unexpired, and unchanged.
 
 Open with: “MemoryBank lets agents share memory, while the person controls which changes
 become actionable. These are simulated agents and mock purchases.”
 
-1. Instinct receives the Shopper's USD 180 headphones request. Approved Northstar memory v1
-   has a USD 0 automatic limit, so a mock approval request is saved and verified.
-2. Muse proposes a USD 200 limit. It stays pending review. The identical purchase still
+1. Instinct receives the Shopper's USD 7,000 Northstar purchase request. Approved memory v1
+   has a USD 5,000 automatic limit, so a mock approval request is saved and verified.
+2. Muse proposes a USD 10,000 limit. It stays pending review. The identical purchase still
    requires approval under v1.
 3. The Shopper explicitly approves through the authorized reviewer control. v1 is superseded,
    v2 becomes active, and the identical request creates a verified mock draft order under v2.
@@ -705,7 +706,7 @@ the memory—and forgetting that memory removed its authority.”
 The names are presentation labels for existing server-bound identities, not integrations
 with external assistant products. The Shopper's approval uses the existing finance-admin
 permission. Purchases remain supplier-scoped mock drafts, not completed orders. Prepare the
-disposable database and search index before presenting; live model/index waits may exceed
+database and search index before presenting; live model/index waits may exceed
 90 seconds. The short story supplements, rather than replaces, the nine interface checks below.
 
 ## Connected backend acceptance rehearsal
