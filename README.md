@@ -208,9 +208,17 @@ This is a conditional budget assuming Atlas access and API keys work early. Cut 
 
 Stack: Python, FastAPI, PyMongo, Voyage embeddings, Gemini via the `google-genai` SDK, minimal HTML/JavaScript or CLI, and SQLite persistence for the separate mock purchasing service. No Streamlit.
 
-Gemini configuration uses `LLM_PROVIDER=gemini`, `LLM_API_KEY` for the Gemini key, and `LLM_MODEL=gemini-3.5-flash-lite`. Both agents can share the same key and model. Google lists free-tier text input/output for this model; actual access and quotas depend on your project. See [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite).
+Gemini configuration uses `LLM_PROVIDER=gemini`, `LLM_API_KEY` for the Gemini key, and `LLM_MODEL=gemini-3.5-flash-lite`. Both agents share one client and that model, with separate instructions. Google lists free-tier text input/output for this model; actual access and quotas depend on your project. See [Google's pricing](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite).
 
-After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Settings loading alone does not test Gemini access; agent calls remain to be implemented. Handle rate limits with bounded retries and a clear wait/retry message, never automatic paid-model fallback. Use synthetic demo data.
+`interpret_proposal` and `interpret_purchase` return structured objects only. They do not call the memory gateway or the purchasing service. A rate limit retries twice, prints the wait and the configured model, and does not switch models. An empty `LLM_API_KEY` raises before any network call.
+
+```bash
+python -m pytest tests/test_llm.py -q
+```
+
+Those tests do not call Gemini. A live call still needs `LLM_API_KEY`. Gateway tool use is not connected yet.
+
+After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Use synthetic demo data.
 
 Prerequisites and planned setup:
 
