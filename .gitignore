@@ -23,3 +23,6 @@ ticket_service/data/
 
 # OS / editor
 .DS_Store
+
+# vscode
+.vscode/
