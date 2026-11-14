@@ -42,8 +42,20 @@ temporary SQLite writes via the partner's store functions, not the full Gemini/H
 The main partner integration checkpoint is reached. Keep review out of model tools. Person 2
 must dispatch immediately inside `validated_action`, verify external state, and record runs.
 No await/sleep/LLM calls/queueing inside the guard; run the whole block in one synchronous
-worker thread, and use a single server process. Person 1 still owns lifecycle controls;
-expire/revoke/forget must reuse `policy_lock` to coordinate with dispatch and review.
+worker thread, and use a single server process. Checkpoint 5 implements `memorybank/lifecycle.py`
+and gateway `expire_memory`, `revoke_memory`, `forget_memory`, each taking server identity,
+memory ID, and expected version. These explicit finance-admin/Agent B server operations share
+`policy_lock` with dispatch/review; never expose them as model tools. Forgetting removes the
+selected version's payload and replaces linked scoped proposals/runs/events with whitelisted
+metadata tombstones. Other approved versions and other teams are not silently deleted.
+Proposals recheck targets under this lock at commit, dropping submitted content when their
+target was forgotten/invalidated. Deleted proposal reads return metadata, not review payload.
+Three local and thirteen Atlas lifecycle tests pass, alongside thirteen proposal regressions;
+`scripts.demo_lifecycle` verifies real Voyage/Atlas in a disposable database.
+The partner must store run memory references (IDs/versions), not raw memory-bearing prompts,
+content, or embeddings, and must not write stale context back after forgetting. Record final
+receipts inside guarded dispatch. Deletion covers existing controlled scoped copies only;
+backups, external records/logs, independent caches and encoded/unlinked fragments are excluded.
 The purchasing service and Gemini interpretation helpers are implemented by the partner;
 end-user orchestration and coordinated dispatch remain unfinished.
 Keep status and runnable instructions accurate. Use the seed IDs and commands in

@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation, embeddings, scoped retrieval, protected review/correction, and final action validation with a shared dispatch guard are implemented and tested. The purchasing service and Gemini interpretation helpers also exist. Full Gemini/server/HTTP orchestration, run receipts, lifecycle mutation controls, and the end-user interface remain unfinished. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation, embeddings, scoped retrieval, protected review/correction, guarded action validation, and expire/revoke/forget controls are implemented and tested. The purchasing service and Gemini/gateway helpers also exist. Full Gemini/server/HTTP orchestration, run receipts, and the end-user interface remain unfinished. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -483,7 +483,7 @@ The replacement preserves the original expiry deadline; approval does not silent
 expired policy. Explicit renewal is not implemented. Search indexing of v2 is asynchronous;
 reads may briefly return no policy, but must never expose superseded v1 as usable.
 
-Future lifecycle mutations and final action dispatch must use the same `policy_lock` helper.
+Lifecycle mutations and final action dispatch use the same `policy_lock` helper.
 This lock protects the single-process demo only. HTTP authentication and final action
 validation/dispatch coordination still need to be connected by the application server.
 
@@ -565,7 +565,7 @@ new action. Keep the block short and dispatch immediately: no LLM calls, sleepin
 `await` inside it. With an async server, run the whole synchronous block in a worker thread;
 an ordinary thread lock held across async awaits does not provide this guarantee. Use one
 application-server process for the demo; independent worker processes do not share these locks.
-Future expire/revoke/forget operations must use the same lock as well.
+Expire/revoke/forget operations use the same lock as well.
 
 Validation writes `action_allowed` / `action_blocked` metadata events without copying policy
 content. These are decisions, not execution receipts or proof of completion. Audit failure
@@ -590,7 +590,89 @@ real Voyage plus actual SQLite writes/read-back. No application data is modified
 
 **Main integration checkpoint reached:** Person 2 can now wire Agent A to retrieval, model
 interpretation, guarded action validation, HTTP purchasing dispatch, verification, and runs.
-Person 1's next task is expire/revoke/forget mutation controls and their deletion tests.
+Checkpoint 5 below completes Person 1's expire/revoke/forget controls. Partner orchestration,
+run recording, interface controls, and the combined end-to-end acceptance demo remain.
+
+### Checkpoint 5: expiry, revocation, and selected-version forgetting
+
+```bash
+python -m scripts.demo_lifecycle
+python -m pytest tests/test_lifecycle_rules.py -v
+python -m pytest tests/test_lifecycle.py --atlas -v
+```
+
+The developer demo embeds synthetic policies through real Voyage in a disposable Atlas
+database. It proves an initially allowed action loses authority after expiry, revocation
+retains history but denies retrieval, and forgetting removes memory payload plus linked
+proposal/run copies. It removes its database afterward, changes no application data, and
+executes no purchases. The three local checks cover copy/reference detection and whitelisted
+metadata. Thirteen Atlas tests cover transitions, authority, version/scope, linked-copy
+redaction, idempotence, rollback, late proposals, and coordination with guarded dispatch.
+The existing thirteen Atlas proposal-review regression tests also pass.
+
+#### Lifecycle contract for the partner
+
+```python
+expired = gateway.expire_memory(admin_identity, memory_id, expected_version)
+revoked = gateway.revoke_memory(admin_identity, memory_id, expected_version)
+forgotten = gateway.forget_memory(admin_identity, memory_id, expected_version)
+# {memory_id, version, status, changed}; a changed forgetting also returns redacted counts.
+```
+
+These are explicit administrator actions on the in-scope Agent B server path, never model
+tools. They require an enabled finance administrator and onboarding-agent context. IDs/versions
+are validated; wrong scope or permission raises `AccessDenied`, while an unavailable record,
+wrong version, or incompatible transition raises `LifecycleConflict`. Missing and out-of-scope
+records share the same error. Keep these functions outside the agent's authority.
+
+- **Expire:** Changes an active selected version to expired and ends its validity immediately.
+  Content/embedding remain as history. Already expired returns changed false.
+- **Revoke:** Withdraws an active or expired selected version. Content/embedding remain as
+  history. Already revoked returns changed false.
+- **Forget:** Works on a selected version, including superseded history. It removes content,
+  embedding, embedding metadata, structured terms, provenance, validity data, and arbitrary
+  extra payload fields by replacing the record with a metadata-only deletion tombstone.
+  Repeating it returns changed false. It does not silently delete independently approved
+  replacement versions; use their own IDs if those must also be forgotten.
+
+All three use the shared per-policy lock, recheck authority/version under it, and use a
+transaction for state plus audit changes. Revocation waits for an already-entered guarded
+dispatch; it blocks the next action and does not undo completed external work. Forgetting
+rolls back if the audit write fails, rather than leaving a partially redacted database.
+
+#### What forgetting removes
+
+Within the authorized company/team, forgetting finds associated proposals by target policy
+and version, result-memory references, and nested IDs. It also finds existing proposals,
+runs, and events containing nested memory/proposal references, the full original text, or
+an identical embedding copy. Proposals become deleted metadata-only records; affected runs
+and events are replaced with whitelisted identity/time/status/reference metadata and a
+redacted marker. Entire affected records are redacted, so other details in the same run can
+also be removed. Unrelated records and other teams are preserved.
+
+`get_proposal` returns only the deletion tombstone for a forgotten proposal; the UI must handle
+status deleted without expecting content or terms. Such proposals cannot be approved. A
+proposal starting before forgetting must acquire the same lock and recheck its target at
+commit; if the target is no longer valid, the proposal is rejected without retaining its
+submitted content/terms/source fields. Late proposals cannot restore that forgotten payload.
+
+This is a bounded application deletion contract, not a universal erasure/compliance claim.
+It covers existing controlled copies in these scoped collections, not other approved memories,
+other tenants/teams, backups, provider logs, completed purchasing records, independent caches,
+or text already in an agent's context. Encoded/unlinked fragments without a recognized
+reference are outside the copy detector's guarantee. The scan is intended for this small demo.
+
+**Run-writing contract:** Person 2 must prefer memory IDs and versions, not copied memory
+content/embeddings/raw memory-bearing prompts. Use references such as
+`memory_refs: [{memory_id, version, policy_key}]` in each run. Record final execution receipts
+inside the same guarded dispatch path. Do not write stale memory content back from an old
+conversation after a lifecycle operation. Existing legacy copies are redacted transactionally;
+this is not a background detector for arbitrary future raw database writes.
+
+The gateway's retrieval and action gate already reject these unusable states. After a
+lifecycle change the next unsupported purchase must ask for clarification, with no external
+purchasing call. The application must expose controls, handle these outcomes, and record
+the final run status. Those end-user integrations remain to be completed with Person 2.
 
 ## Demo sequence
 
@@ -615,7 +697,7 @@ Person 1's next task is expire/revoke/forget mutation controls and their deletio
 - [ ] Events/runs tied to memory versions
 - [ ] Attack and legitimate-correction acceptance checks
 - [x] Cross-team search and ID isolation (read path)
-- [ ] Expiry and forgetting
+- [x] Authorized expiry, revocation, and selected-version forgetting (checkpoint 5)
 - [ ] Minimal CLI/web interaction and accurate run commands
 
 See [agent.md](agent.md) for organizer requirements and project-specific instructions.
