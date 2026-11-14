@@ -1,2 +1,25 @@
+# Secrets: this repo is public. Never commit real credentials.
+.env
+.env.*
+!.env.example
+
+# Python
 .venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Local scratch connection test (kept from the existing .gitignore)
 test_mongodb.py
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# Demo ticket service local data
+ticket_service/data/
+
+# OS / editor
+.DS_Store
