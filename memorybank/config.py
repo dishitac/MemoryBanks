@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     # Optional at load time so the Mongo connection check works before a Voyage key exists.
     # Embedding code must raise a clear error if this is empty.
     voyage_api_key: str = ""
-    voyage_model: str = "voyage-3.5"
+    # voyage-4 has the 200M free-token allowance on the hackathon account (voyage-3.5 does not).
+    voyage_model: str = "voyage-4"
     embedding_dim: int = 1024
 
     # LLM for structured routing actions
