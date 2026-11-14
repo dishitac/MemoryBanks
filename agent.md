@@ -10,8 +10,13 @@ Checkpoint 1 implements collections, schema validation, standard indexes, non-de
 and eight real Atlas tests plus a local search-fixture test. Five synthetic memories cover
 multiple suppliers, an unrelated office-supplies policy, private marketing scope, and a retired
 Northstar instruction. The retired fixture uses a separate policy key, not invented history
-of the existing active v1. The gateway, embeddings, agents, and purchasing integration are not yet
-implemented. Keep status and runnable instructions accurate. Use the seed IDs and commands in
+of the existing active v1. Checkpoint 2A adds `memorybank/embeddings.py` and
+`python -m scripts.embed_memories`: real Voyage document/query helpers, response validation,
+model/dimension/content-hash metadata, and guarded fixture updates. Nine local boundary tests
+and two Atlas storage tests cover this work; the storage tests explicitly simulate API responses,
+while real Voyage embedding preparation was verified separately. Vector Search, gateway,
+agents, and purchasing integration remain unimplemented.
+Keep status and runnable instructions accurate. Use the seed IDs and commands in
 README. Do not reseed by deleting or resetting existing policies.
 
 ## Organizer requirements
