@@ -12,8 +12,11 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, model_validator
 
+from memorybank.config import get_settings
+from memorybank.db import get_db
+from memorybank.embeddings import Embeddings
 from memorybank.llm import GeminiSettings, generate_structured
-from memorybank.memory_gateway import ServerIdentity
+from memorybank.memory_gateway import MemoryGateway, ServerIdentity
 
 PROPOSAL_INSTRUCTIONS = """
 You are Agent B, the supplier-onboarding assistant. Read one message and propose a
@@ -202,3 +205,27 @@ def submit_proposal(
     if not isinstance(result, dict) or result.get("status") not in {"rejected", "pending_review"}:
         raise InterpretationError("propose_change cannot activate memory.")
     return ProposalResult.model_validate(result)
+
+
+def submit_stored_proposal(
+    message: str,
+    identity: ServerIdentity,
+    source_kind: str,
+    *,
+    client: Any = None,
+    model: str | None = None,
+    settings: GeminiSettings | None = None,
+) -> ProposalResult:
+    """Submit through the real MemoryGateway. The server still supplies identity."""
+    resolved = settings if settings is not None else get_settings()
+    embedder = Embeddings(resolved.voyage_api_key, resolved.voyage_model, resolved.embedding_dim)
+    gateway = MemoryGateway(get_db(), embedder)
+    return submit_proposal(
+        message,
+        identity,
+        source_kind,
+        gateway,
+        client=client,
+        model=model,
+        settings=resolved,
+    )
