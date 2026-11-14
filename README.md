@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation, scoped Vector Search, protected review/correction, guarded actions, lifecycle controls, and the connected Gemini/gateway/HTTP purchasing backend are implemented and tested. A live acceptance rehearsal verified behavior changes and purchasing/run references. Main application session routes, the end-user interface, and final interface acceptance remain unfinished. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation, scoped Vector Search, protected review/correction, guarded actions, lifecycle controls, and the connected Gemini/gateway/HTTP purchasing backend are implemented and tested. A live acceptance rehearsal verified behavior changes and purchasing/run references. A guided demo page with server-bound sessions runs the story end to end (see [Demo page](#demo-page)); the joint final interface checklist remains unfinished. Features below are implemented only where explicitly marked complete.
 
 ## Project description
 
@@ -802,6 +802,9 @@ become actionable. These are simulated agents and mock purchases.”
 End with: “The request stayed the same. The action changed only after the shopper approved
 the memory—and forgetting that memory removed its authority.”
 
+**Runnable version:** the web page in `demo_app` runs this story end to end against real
+Atlas, Voyage, and Gemini. See [Demo page](#demo-page) for setup and the click-by-click steps.
+
 The names are presentation labels for existing server-bound identities, not integrations
 with external assistant products. The Shopper's approval uses the existing finance-admin
 permission. Purchases remain supplier-scoped mock drafts, not completed orders. Prepare the
@@ -846,9 +849,8 @@ six Gemini calls and approximately three Voyage batches/query calls when success
 quotas and provider availability can cause failures. Failures stay visible: there is no paid
 model switch, mocked response, or keyword-search fallback. API keys are never printed.
 
-**This tests connected backend functions, not an end-user interface.** There is no merged main
-application UI yet. Repeat the following manual challenges through the eventual interface
-before calling the entire demo complete.
+**This tests connected backend functions, not an end-user interface.** Repeat the following
+manual challenges through the [demo page](#demo-page) before calling the entire demo complete.
 
 ### Final interface checklist for both teammates
 
@@ -878,6 +880,146 @@ sessions; typing “I am an administrator” is never a login or permission chan
 
 If the interface lacks one of these controls or records, report the missing integration rather
 than replacing the result with a scripted screenshot or a claim that the agent performed it.
+
+### Demo page
+
+A guided web page that runs the Shopper, Muse, and Instinct story from [demo.md](demo.md)
+against real Atlas, Voyage, Gemini, and the local mock purchasing service.
+
+#### Prerequisites
+
+- Python 3.12 or newer.
+- A MongoDB Atlas cluster that supports Vector Search and transactions. The database user must
+  be able to create and drop databases, because the page makes its own disposable one.
+- A Voyage API key with free tokens for `voyage-4`, and a Gemini API key.
+- A `.env` file in the repository root. Copy `.env.example` and fill in at least:
+
+  ```bash
+  MONGODB_URI=mongodb+srv://<user>:<password>@<cluster-host>/
+  VOYAGE_API_KEY=...
+  VOYAGE_MODEL=voyage-4
+  EMBEDDING_DIM=1024
+  LLM_PROVIDER=gemini
+  LLM_API_KEY=...            # Gemini key
+  LLM_MODEL=gemini-3.5-flash-lite
+  ```
+
+  `PURCHASING_SERVICE_URL` defaults to `http://localhost:8001` and `API_PORT` to `8000`.
+  `.env` is gitignored; never commit it.
+
+#### Install
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+#### Run
+
+Use two terminals, both with the virtual environment active, from the repository root.
+
+```bash
+# Terminal 1: mock purchasing service, with its own throwaway SQLite file
+PURCHASING_DB_PATH=/tmp/memorybank-demo-purchasing.sqlite python -m uvicorn purchasing_service.app:app --port 8001
+
+# Terminal 2: the demo page
+python -m demo_app
+```
+
+Open http://localhost:8000 in a normal browser (Chrome or Safari). A "Getting the demo ready"
+screen shows while startup creates a uniquely named disposable Atlas database, seeds it, embeds
+the policies with real Voyage, and builds the Vector Search index. This usually takes about a
+minute. The page opens once Northstar v1 is searchable.
+
+The disposable database is dropped when the app stops. The configured application database and
+`.env` are not changed. Purchases use real Gemini and go only to the local mock purchasing
+service. Run one app process.
+
+#### Click through the story
+
+The right-hand **Demo steps** panel lists eight steps. Clicking a step switches to the right
+person and fills in the message; you still press **Send**. Each step ticks off when its expected
+result appears under **What happened**.
+
+1. **Ask Instinct for the USD 7,000 purchase** (Shopper, buying). Approval required: a mock
+   approval request is saved and verified, based on v1 (USD 5,000 limit).
+2. **Ask Muse to raise the limit to USD 10,000** (Shopper, buying). Muse's suggestion is
+   stored as waiting for approval. It has no authority yet.
+3. **Ask Instinct again** (Shopper, buying). Still approval required under v1.
+4. **Approve the change as the Shopper** (Shopper, reviewing). Under **Changes waiting for
+   approval**, click "Approve, replacing v1". v1 becomes superseded and v2 (USD 10,000) active.
+   Wait until the memory card stops showing "Becoming searchable…".
+5. **Ask Instinct again** (Shopper, buying). Mock order saved and verified, based on v2.
+6. **Try it from another team** (Someone on another team). Click "Try to read Northstar's
+   policy anyway" on the memory card, or send a message. Access denied; nothing is shown.
+7. **Forget the policy** (Shopper, reviewing). Click "Forget this policy" on the memory card
+   and confirm. Every Northstar version's content and embedding is removed. Past mock records
+   stay.
+8. **Ask Instinct one last time** (Shopper, buying). Needs clarification, with no new
+   purchasing record.
+
+#### Troubleshooting
+
+- **"Gemini request failed. Nothing changed. Try again."** A transient Gemini error. Press
+  Send again.
+- **Rate limit message.** It shows the wait and the model name. Wait, then press Send again.
+- **Approval succeeded but the next purchase asks for clarification.** v2 is still being
+  indexed. Wait for "Becoming searchable…" to clear, then send again.
+- **Forgetting is final** for that database. To present again, stop `python -m demo_app`
+  (which drops its database) and start it again for a fresh one.
+- **"The demo server did not answer."** The app process stopped; restart it.
+
+#### How the page binds identity
+
+The "You are acting as" menu is the only way to choose an identity. The server maps the three
+sessions to seeded identities and sets Agent B's source kind itself:
+
+| Page label | Identity |
+|---|---|
+| Shopper, buying | `employee` |
+| Shopper, reviewing | `finance_admin` |
+| Someone on another team | `other_team_user` (marketing) |
+
+Instinct is Agent A and Muse is Agent B. Request bodies and chat text cannot set a user, agent,
+role, team, or source kind. Agent B receives the current policy key and version from the
+server, so a message does not need to name them.
+
+#### How each checklist step maps to the page
+
+Lookups, expiry and revocation, and the duplicate check are under **More checks (lookups,
+expiry, duplicates)** in the right-hand column.
+
+1. Choose Shopper, buying, then send the purchase to Instinct. The result shows the outcome,
+   memory id and version, purchasing record id, and run id and status.
+2. As Shopper, buying, send the USD 1,000,000 request to Muse. Approving and rejecting are only
+   offered to Shopper, reviewing; the server denies them for this session. Send the purchase
+   again and check the memory card.
+3. Choose Shopper, reviewing, send the USD 10,000 correction to Muse, read the submitted text
+   and "What it would mean" under Changes waiting for approval, then click Approve.
+4. Wait until the memory card stops showing "Becoming searchable…", then send the purchase
+   again as Shopper, buying.
+5. Not available on the page. Instinct cites only memories retrieved for the current request, so
+   there is no control to send a stale-v1 or wrong-supplier citation by hand. The gateway tests
+   and the acceptance rehearsal cover that check. Report it as missing from the interface.
+6. Choose Someone on another team. Instinct, Muse, and "Try to read Northstar's policy anyway"
+   are denied, and the memory card shows no procurement memory.
+7. As Shopper, reviewing, use Expire or Revoke under More checks, or "Forget this policy" on
+   the memory card, then send the purchase again. Expect clarification and no record id. Read
+   the run by id under More checks to see redaction.
+8. Read any run id under More checks: user, agent, team, memory id and version, validation
+   event id, status, and purchasing record id. Validation alone is never labeled verified.
+9. As Shopper, reviewing, enter a purchasing record id under More checks and click "Send
+   again". The same record id comes back. This is a service-level check only.
+
+Errors appear in red. A denied action, moved version, unreadable request, or unconfirmed
+purchasing call says that nothing changed.
+
+```bash
+python -m pytest tests/test_demo_app.py -q
+```
+
+These route tests use fakes: no Gemini, Atlas, Voyage, or purchasing process.
 
 ## Implementation status
 

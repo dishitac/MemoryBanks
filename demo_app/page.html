@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemoryBank: Shopper, Muse, and Instinct</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --ink: #1d2330; --muted: #6b7280; --line: #e5e7eb;
+    --instinct: #2563eb; --muse: #7c3aed; --shopper: #059669; --other: #6b7280;
+    --ok: #047857; --ok-bg: #ecfdf5; --warn: #b45309; --warn-bg: #fffbeb;
+    --bad: #b91c1c; --bad-bg: #fef2f2; --info: #374151; --info-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--ink); }
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 16px 28px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+    background: var(--info-bg); color: var(--info); margin-left: 8px; vertical-align: middle; }
+  main { display: grid; grid-template-columns: 300px 1fr 340px; gap: 20px; padding: 20px 28px;
+    max-width: 1500px; margin: 0 auto; }
+  @media (max-width: 1200px) {
+    main { grid-template-columns: 290px 1fr; padding: 16px; }
+    main > .middle { grid-column: 2; grid-row: 1 / span 2; }
+  }
+  @media (max-width: 760px) {
+    main { display: flex; flex-direction: column; gap: 0; }
+    main > div { display: contents; }
+    #c-who { order: 1; } #c-steps { order: 2; } #c-memory { order: 3; }
+    #c-review { order: 4; } #c-composer { order: 5; } #c-feed { order: 6; } #c-more { order: 7; }
+  }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin: 0 0 10px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  button { font: inherit; border: 1px solid var(--line); background: #fff; border-radius: 8px;
+    padding: 7px 12px; cursor: pointer; }
+  button:hover { background: #f9fafb; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button.primary:hover { background: #111827; }
+  button.approve { background: var(--ok); color: #fff; border-color: var(--ok); }
+  button.danger { color: var(--bad); border-color: #fecaca; }
+  button.link { border: 0; background: none; color: var(--instinct); padding: 0; }
+
+  /* Who am I */
+  .who { display: flex; flex-direction: column; gap: 8px; }
+  .who button { display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px; }
+  .who button.active { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; color: #fff; display: grid;
+    place-items: center; font-weight: 700; flex: none; font-size: 14px; }
+  .who small { display: block; color: var(--muted); font-size: 12px; }
+
+  /* Memory */
+  .limit { font-size: 30px; font-weight: 700; margin: 2px 0; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px;
+    border-radius: 999px; }
+  .b-ok { background: var(--ok-bg); color: var(--ok); }
+  .b-warn { background: var(--warn-bg); color: var(--warn); }
+  .b-bad { background: var(--bad-bg); color: var(--bad); }
+  .b-info { background: var(--info-bg); color: var(--info); }
+  .versions { list-style: none; padding: 0; margin: 10px 0 0; }
+  .versions li { display: flex; justify-content: space-between; padding: 6px 0;
+    border-top: 1px solid var(--line); font-size: 13px; }
+
+  /* Composer */
+  .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tabs button { flex: 1; display: flex; gap: 8px; align-items: center; justify-content: center; }
+  .tabs button.active.t-instinct { border-color: var(--instinct); color: var(--instinct);
+    box-shadow: 0 0 0 1px var(--instinct); }
+  .tabs button.active.t-muse { border-color: var(--muse); color: var(--muse);
+    box-shadow: 0 0 0 1px var(--muse); }
+  textarea { width: 100%; font: inherit; border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; resize: vertical; min-height: 64px; }
+  .composer-foot { display: flex; justify-content: space-between; align-items: center;
+    margin-top: 8px; gap: 10px; }
+
+  /* Feed */
+  .event { display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+  .event:first-child { border-top: 0; }
+  .event .body { flex: 1; min-width: 0; }
+  .event .who-line { font-size: 13px; color: var(--muted); }
+  .event .who-line strong { color: var(--ink); }
+  .headline { font-weight: 600; margin: 4px 0; padding: 6px 10px; border-radius: 8px; }
+  .h-ok { background: var(--ok-bg); color: var(--ok); }
+  .h-warn { background: var(--warn-bg); color: var(--warn); }
+  .h-bad { background: var(--bad-bg); color: var(--bad); }
+  .h-info { background: var(--info-bg); color: var(--info); }
+  .facts { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px;
+    font-size: 13px; margin-top: 6px; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .say { font-size: 13px; color: var(--muted); font-style: italic; margin-top: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 30px 0; }
+
+  /* Steps */
+  .steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+  .steps li { display: flex; gap: 10px; padding: 8px; border-radius: 8px; font-size: 13px;
+    cursor: pointer; }
+  .steps li:hover { background: #f9fafb; }
+  .steps li::before { counter-increment: step; content: counter(step); flex: none; width: 22px;
+    height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px;
+    background: var(--info-bg); color: var(--info); font-weight: 700; }
+  .steps li.done::before { content: "✓"; background: var(--ok); color: #fff; }
+  .steps li.current { background: #eef2ff; }
+  .steps li.current::before { background: var(--instinct); color: #fff; }
+  .steps li small { display: block; color: var(--muted); }
+
+  /* Review */
+  .proposal { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 8px; }
+  .change { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700;
+    margin: 6px 0; }
+  .change .from { color: var(--muted); text-decoration: line-through; }
+  .quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--muted);
+    font-size: 13px; margin: 6px 0; }
+
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details .row { display: flex; gap: 6px; margin: 8px 0; }
+  details input { flex: 1; font: inherit; font-size: 13px; padding: 6px 8px;
+    border: 1px solid var(--line); border-radius: 6px; }
+  pre.raw { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 10px;
+    font-size: 12px; white-space: pre-wrap; max-height: 260px; overflow: auto; }
+
+  /* Preparing */
+  #preparing { position: fixed; inset: 0; background: rgba(245,246,248,.94); display: none;
+    place-items: center; z-index: 10; text-align: center; }
+  #preparing.show { display: grid; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--line);
+    border-top-color: var(--ink); border-radius: 50%; animation: spin 1s linear infinite;
+    margin: 0 auto 14px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="preparing"><div>
+  <div class="spinner"></div>
+  <strong>Getting the demo ready</strong>
+  <p class="muted" id="preparing-text">Creating a fresh database and search index. This can take
+  a couple of minutes.</p>
+</div></div>
+
+<header>
+  <h1>MemoryBank <span class="pill">Simulated agents · mock purchases</span></h1>
+  <p>Agents share memory. The person decides which changes they are allowed to act on.</p>
+</header>
+
+<main>
+  <!-- Left: who you are and what memory says -->
+  <div>
+    <div class="card" id="c-who">
+      <h2>You are acting as</h2>
+      <div class="who" id="who">
+        <button data-session="employee">
+          <span class="avatar" style="background:var(--shopper)">S</span>
+          <span>Shopper, buying<small>Talks to Instinct and Muse</small></span>
+        </button>
+        <button data-session="finance_admin">
+          <span class="avatar" style="background:var(--shopper)">S</span>
+          <span>Shopper, reviewing<small>Approves or forgets memory</small></span>
+        </button>
+        <button data-session="other_team_user">
+          <span class="avatar" style="background:var(--other)">O</span>
+          <span>Someone on another team<small>Should see nothing</small></span>
+        </button>
+      </div>
+      <p class="muted" id="identity" style="margin:10px 0 0">The server decides who you are.
+      Typing a role into a message changes nothing.</p>
+    </div>
+
+    <div class="card" id="c-memory">
+      <h2>Approved memory</h2>
+      <div id="memory"><p class="muted">Choose who you are acting as.</p></div>
+      <ul class="versions" id="versions"></ul>
+      <div id="forget-area" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Middle: talk to agents and see what happened -->
+  <div class="middle">
+    <div class="card" id="c-composer">
+      <div class="tabs">
+        <button class="t-instinct active" data-agent="instinct">
+          <span class="avatar" style="background:var(--instinct);width:24px;height:24px">I</span>
+          Instinct buys
+        </button>
+        <button class="t-muse" data-agent="muse">
+          <span class="avatar" style="background:var(--muse);width:24px;height:24px">M</span>
+          Muse suggests memory changes
+        </button>
+      </div>
+      <textarea id="message"></textarea>
+      <div class="composer-foot">
+        <span class="muted" id="agent-hint"></span>
+        <button class="primary" id="send">Send</button>
+      </div>
+    </div>
+
+    <div class="card" id="c-feed">
+      <h2>What happened</h2>
+      <div id="feed"><p class="empty">Results from Instinct, Muse, and the Shopper appear here.</p></div>
+    </div>
+  </div>
+
+  <!-- Right: guide, review, extras -->
+  <div>
+    <div class="card" id="c-steps">
+      <h2>Demo steps</h2>
+      <ol class="steps" id="steps"></ol>
+      <p class="muted" style="margin:8px 0 0">Click a step to switch to the right person and
+      message. You still press Send.</p>
+    </div>
+
+    <div class="card" id="c-review">
+      <h2>Changes waiting for approval</h2>
+      <div id="review"><p class="muted">Nothing waiting.</p></div>
+    </div>
+
+    <div class="card" id="c-more">
+      <details>
+        <summary>More checks (lookups, expiry, duplicates)</summary>
+        <div class="row"><input id="memory-id" placeholder="Memory id">
+          <button onclick="lookupMemory()">Read</button></div>
+        <div class="row"><input id="run-id" placeholder="Run id">
+          <button onclick="lookupRun()">Read</button></div>
+        <div class="row"><input id="record-id" placeholder="Purchasing record id (apr_ / ord_)">
+          <button onclick="replay()">Send again</button></div>
+        <p class="muted">"Send again" reuses the record's own key; the same id should come back.</p>
+        <div id="version-controls"></div>
+        <p class="muted" id="database"></p>
+        <pre class="raw" id="raw">Last raw response appears here.</pre>
+      </details>
+    </div>
+  </div>
+</main>
+
+<script>
+const PEOPLE = {
+  employee: { name: "Shopper", mode: "buying", color: "var(--shopper)", letter: "S" },
+  finance_admin: { name: "Shopper", mode: "reviewing", color: "var(--shopper)", letter: "S" },
+  other_team_user: { name: "Another team", mode: "", color: "var(--other)", letter: "O" },
+};
+const AGENTS = {
+  instinct: { name: "Instinct", color: "var(--instinct)", letter: "I",
+    text: "Please prepare a USD 7,000 purchase from Northstar.",
+    hint: "Instinct checks the approved memory, then saves a mock order or asks for approval." },
+  muse: { name: "Muse", color: "var(--muse)", letter: "M",
+    text: "Suggest automatic Northstar purchases up to USD 10,000.",
+    hint: "Muse can only suggest. Nothing changes until the Shopper approves." },
+};
+const STEPS = [
+  { title: "Ask Instinct for the USD 7,000 purchase", hint: "Expect: approval required",
+    session: "employee", agent: "instinct",
+    done: (e) => e.kind === "purchase" && e.status === "verified" && !e.order },
+  { title: "Ask Muse to raise the limit to USD 10,000", hint: "Expect: waiting for approval",
+    session: "employee", agent: "muse",
+    done: (e) => e.kind === "proposal" && e.status === "pending_review" },
+  { title: "Ask Instinct again", hint: "Expect: still approval required",
+    session: "employee", agent: "instinct",
+    done: (e) => e.kind === "purchase" && e.status === "verified" && !e.order },
+  { title: "Approve the change as the Shopper", hint: "Switch to reviewing",
+    session: "finance_admin", done: (e) => e.kind === "approved" },
+  { title: "Ask Instinct again", hint: "Expect: mock order under v2",
+    session: "employee", agent: "instinct",
+    done: (e) => e.kind === "purchase" && e.status === "verified" && e.order },
+  { title: "Try it from another team", hint: "Expect: nothing visible",
+    session: "other_team_user", done: (e) => e.kind === "denied" },
+  { title: "Forget the policy", hint: "As the Shopper, reviewing",
+    session: "finance_admin", done: (e) => e.kind === "forgotten" },
+  { title: "Ask Instinct one last time", hint: "Expect: no order, needs clarification",
+    session: "employee", agent: "instinct",
+    done: (e) => e.kind === "purchase" && e.status === "clarification" },
+];
+
+const state = {
+  session: "", agent: "instinct", step: 0, status: null,
+  states: {},           // memory id -> "superseded" | "forgotten" | ...
+  feedStarted: false,
+};
+
+const $ = (id) => document.getElementById(id);
+const usd = (n) => `USD ${Number(n).toLocaleString()}`;
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === "class") node.className = value;
+    else if (key === "style") node.style.cssText = value;
+    else if (key.startsWith("on")) node[key] = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children) if (child != null) node.append(child);
+  return node;
+}
+
+async function call(method, path, body, quiet = false) {
+  const options = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) options.body = JSON.stringify(body);
+  let response, data;
+  try {
+    response = await fetch(path, options);
+    data = await response.json();
+  } catch {
+    data = { error: "The demo server did not answer. Is it still running?" };
+  }
+  if (!quiet) $("raw").textContent = JSON.stringify(data, null, 2);
+  return { ok: !!response && response.ok, status: response ? response.status : 0, data };
+}
+
+const errorText = (result) => result.data.error || "Something went wrong. Nothing changed.";
+
+/* ---------- Feed ---------- */
+
+function addEvent({ actor, tone, headline, facts = [], say, kind, ...rest }) {
+  if (!state.feedStarted) { $("feed").innerHTML = ""; state.feedStarted = true; }
+  const person = actor === "Instinct" ? AGENTS.instinct : actor === "Muse" ? AGENTS.muse
+    : actor === "System" ? { color: "#9ca3af", letter: "!" } : PEOPLE[state.session] || PEOPLE.employee;
+  const asWho = PEOPLE[state.session];
+  const list = el("dl", { class: "facts" });
+  for (const [label, value, mono] of facts) {
+    if (value == null || value === "") continue;
+    list.append(el("dt", {}, label), el("dd", mono ? { class: "mono" } : {}, String(value)));
+  }
+  const card = el("div", { class: "event" },
+    el("span", { class: "avatar", style: `background:${person.color}` }, person.letter),
+    el("div", { class: "body" },
+      el("div", { class: "who-line" }, el("strong", {}, actor),
+        asWho ? ` · for ${asWho.name}${asWho.mode ? ", " + asWho.mode : ""}` : "",
+        ` · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`),
+      el("div", { class: `headline h-${tone}` }, headline),
+      facts.length ? list : null,
+      say ? el("div", { class: "say" }, say) : null));
+  $("feed").prepend(card);
+  if (kind) advance({ kind, ...rest });
+}
+
+function advance(event) {
+  const step = STEPS[state.step];
+  if (step && step.session === state.session && step.done(event)) {
+    state.step += 1;
+    renderSteps();
+  }
+}
+
+/* ---------- Who am I ---------- */
+
+async function choose(session) {
+  const result = await call("POST", "/session", { session });
+  if (!result.ok) { addEvent({ actor: "System", tone: "bad", headline: errorText(result) }); return; }
+  state.session = session;
+  for (const button of document.querySelectorAll("#who button")) {
+    button.classList.toggle("active", button.dataset.session === session);
+  }
+  $("identity").textContent =
+    `Server identity: ${result.data.user_id} on the ${result.data.team_id} team.`;
+  await refresh();
+}
+
+for (const button of document.querySelectorAll("#who button")) {
+  button.onclick = () => choose(button.dataset.session);
+}
+
+/* ---------- Composer ---------- */
+
+function pickAgent(agent, resetText = true) {
+  state.agent = agent;
+  for (const button of document.querySelectorAll(".tabs button")) {
+    button.classList.toggle("active", button.dataset.agent === agent);
+  }
+  if (resetText) $("message").value = AGENTS[agent].text;
+  $("agent-hint").textContent = AGENTS[agent].hint;
+}
+
+for (const button of document.querySelectorAll(".tabs button")) {
+  button.onclick = () => pickAgent(button.dataset.agent);
+}
+
+$("send").onclick = async () => {
+  if (!state.session) {
+    addEvent({ actor: "System", tone: "info", headline: "Choose who you are acting as first." });
+    return;
+  }
+  const button = $("send");
+  button.disabled = true;
+  button.textContent = state.agent === "instinct" ? "Instinct is working…" : "Muse is working…";
+  try {
+    if (state.agent === "instinct") await purchase();
+    else await propose();
+  } finally {
+    button.disabled = false;
+    button.textContent = "Send";
+    refresh();
+  }
+};
+
+async function purchase() {
+  const result = await call("POST", "/purchase", { message: $("message").value });
+  if (!result.ok) {
+    if (result.status === 403 && state.session === "other_team_user") {
+      addEvent({ actor: "Instinct", tone: "info", kind: "denied",
+        headline: "Access denied. No procurement memory is visible to this team.",
+        say: "Another team gets nothing: not the policy, not its history." });
+    } else {
+      addEvent({ actor: "Instinct", tone: "bad", headline: errorText(result) });
+    }
+    return;
+  }
+  const d = result.data;
+  const order = d.proposed_action === "create_draft_order";
+  const memory = d.memory_id ? `v${d.memory_version} (${d.memory_id})` : "none";
+  const common = [
+    ["Purchase", d.amount != null ? `${usd(d.amount)} from Northstar` : null],
+    ["Based on memory", memory, true],
+    ["Purchasing record", d.purchasing_record_id || "None created", !!d.purchasing_record_id],
+    ["Run", `${d.run_id} (${d.status})`, true],
+  ];
+  const outcomes = {
+    order: ["ok", "Mock order saved and verified",
+      "Same request. The Shopper approved the memory, so what Instinct may do changed."],
+    approval: ["warn", "Approval required. Mock approval request saved and verified",
+      `The purchase is above the approved limit, so Instinct asks first.${
+        pendingCount() ? " A pending suggestion has no authority yet." : ""}`],
+    clarification: ["info", "Needs clarification. No order was created",
+      "No approved memory applies, so Instinct cannot act."],
+    blocked: ["bad", "Blocked. Nothing was sent to purchasing", d.reason],
+    failed: ["bad", "Purchasing rejected the request. It did not go through", null],
+    uncertain: ["bad", "Purchasing did not confirm the request. Treat it as not done", null],
+  };
+  const key = d.status === "verified" ? (order ? "order" : "approval") : d.status;
+  const [tone, headline, say] = outcomes[key] || outcomes.uncertain;
+  addEvent({ actor: "Instinct", tone, headline, facts: common, say,
+    kind: "purchase", status: d.status, order });
+}
+
+let pending = [];
+const pendingCount = () => pending.length;
+
+async function propose() {
+  const result = await call("POST", "/proposal", { message: $("message").value });
+  if (!result.ok) {
+    const denied = result.status === 403 && state.session === "other_team_user";
+    addEvent({ actor: "Muse", tone: denied ? "info" : "bad", kind: denied ? "denied" : undefined,
+      headline: denied ? "Access denied. This team cannot change procurement memory."
+        : errorText(result) });
+    return;
+  }
+  const d = result.data;
+  const limit = d.terms && d.terms.max_without_approval;
+  if (d.status === "pending_review") pending.push(d.proposal_id);
+  addEvent({ actor: "Muse", tone: d.status === "pending_review" ? "warn" : "info",
+    headline: limit != null ? `Suggested automatic purchases up to ${usd(limit)}`
+      : "Suggested a memory change",
+    facts: [
+      ["Status", d.status === "pending_review" ? "Waiting for the Shopper's approval" : d.status],
+      ["Would replace", `v${d.expected_version}`],
+      ["Proposal", d.proposal_id, true],
+    ],
+    say: "A suggestion is stored, but it has no authority yet.",
+    kind: "proposal", status: d.status });
+  renderReview();
+}
+
+/* ---------- Review ---------- */
+
+async function renderReview() {
+  const box = $("review");
+  box.innerHTML = "";
+  if (state.session !== "finance_admin") {
+    box.append(el("p", { class: "muted" }, pendingCount()
+      ? `${pendingCount()} suggestion${pendingCount() > 1 ? "s" : ""} waiting. ` +
+        "Only the Shopper, reviewing, can approve."
+      : "Nothing waiting."));
+    if (pendingCount() && state.session !== "other_team_user") {
+      box.append(el("button", { onclick: () => choose("finance_admin") },
+        "Switch to Shopper, reviewing"));
+    }
+    return;
+  }
+  const result = await call("GET", "/proposals", undefined, true);
+  if (!result.ok) { box.append(el("p", { class: "muted" }, errorText(result))); return; }
+  const open = result.data.proposals.filter((p) => p.status === "pending_review");
+  pending = open.map((p) => p.proposal_id);
+  if (!open.length) { box.append(el("p", { class: "muted" }, "Nothing waiting.")); return; }
+  const current = state.status && state.status.current_policy;
+  for (const item of open) {
+    const terms = item.terms || {};
+    const from = current && current.terms ? usd(current.terms.max_without_approval) : "—";
+    box.append(el("div", { class: "proposal" },
+      el("div", { class: "muted" }, "Automatic purchase limit for Northstar"),
+      el("div", { class: "change" }, el("span", { class: "from" }, from), "→",
+        el("span", {}, terms.max_without_approval != null ? usd(terms.max_without_approval) : "?")),
+      el("div", { class: "quote" }, `"${item.content || ""}"`),
+      el("div", { class: "muted" }, `What it would mean: ${item.effective_content || ""}`),
+      el("div", { class: "muted", style: "margin-top:4px" },
+        `Suggested by ${item.source_kind === "finance_admin" ? "the Shopper (reviewing)"
+          : "the Shopper via Muse"} · replaces v${item.expected_version}`),
+      el("div", { style: "margin-top:10px;display:flex;gap:8px" },
+        el("button", { class: "approve", onclick: () => review(item, "approve", terms) },
+          `Approve, replacing v${item.expected_version}`),
+        el("button", { onclick: () => review(item, "reject", terms) }, "Reject"))));
+  }
+}
+
+async function review(item, action, terms) {
+  const result = await call("POST", `/proposals/${item.proposal_id}/${action}`,
+    { expected_version: item.expected_version });
+  if (!result.ok) {
+    addEvent({ actor: "Shopper", tone: "bad", headline: errorText(result) });
+  } else if (action === "approve" && result.data.memory_id) {
+    state.states[result.data.superseded_memory_id] = "superseded";
+    addEvent({ actor: "Shopper", tone: "ok", kind: "approved",
+      headline: `Approved the ${usd(terms.max_without_approval)} limit`,
+      facts: [
+        [`Memory v${item.expected_version}`, `Superseded (${result.data.superseded_memory_id})`],
+        [`Memory v${result.data.version}`, `Active (${result.data.memory_id})`],
+      ],
+      say: "Approval is a separate click with the exact version, never a chat message." });
+  } else {
+    addEvent({ actor: "Shopper", tone: "info", headline: "Rejected the suggestion. Nothing changed." });
+  }
+  await refresh();
+}
+
+/* ---------- Memory card ---------- */
+
+function renderMemory(data) {
+  const box = $("memory");
+  box.innerHTML = "";
+  const policy = data.current_policy;
+  if (!state.session) {
+    box.append(el("p", { class: "muted" }, "Choose who you are acting as."));
+  } else if (state.session === "other_team_user") {
+    box.append(el("span", { class: "badge b-info" }, "Hidden"),
+      el("p", {}, "No procurement memory is visible to this team."),
+      el("button", { onclick: tryRead }, "Try to read Northstar's policy anyway"));
+  } else if (policy && policy.terms) {
+    const terms = policy.terms;
+    box.append(
+      el("div", {}, el("span", { class: "badge b-ok" }, `Active · v${policy.version}`),
+        data.indexed === false ? el("span", { class: "badge b-warn", style: "margin-left:6px" },
+          "Becoming searchable…") : null),
+      el("div", { class: "muted", style: "margin-top:8px" }, "Northstar automatic purchase limit"),
+      el("div", { class: "limit" }, usd(terms.max_without_approval)),
+      el("div", {}, `Ask for approval above ${usd(terms.max_without_approval)}.`),
+      el("div", { class: "mono muted", style: "margin-top:4px" }, policy.memory_id));
+    if (data.indexed === false) setTimeout(refresh, 3000);
+  } else {
+    box.append(el("span", { class: "badge b-bad" }, "None"),
+      el("p", {}, "No approved Northstar memory. Instinct will ask for clarification."));
+  }
+
+  const versions = $("versions");
+  versions.innerHTML = "";
+  const current = policy && policy.memory_id;
+  for (const [id, version] of Object.entries(data.memories || {})) {
+    if (!state.session || state.session === "other_team_user") break;
+    const label = id === current ? ["Active", "b-ok"]
+      : state.states[id] === "forgotten" ? ["Forgotten", "b-bad"]
+      : state.states[id] === "superseded" ? ["Superseded", "b-info"]
+      : state.states[id] ? [state.states[id], "b-warn"]
+      : ["Not usable", "b-info"];
+    versions.append(el("li", {}, el("span", {}, `v${version} `, el("span", { class: "mono muted" }, id)),
+      el("span", { class: `badge ${label[1]}` }, label[0])));
+  }
+
+  const forget = $("forget-area");
+  forget.innerHTML = "";
+  if (state.session === "finance_admin" && Object.keys(data.memories || {}).length) {
+    forget.append(el("button", { class: "danger", onclick: forgetAll }, "Forget this policy"),
+      el("div", { class: "muted", style: "margin-top:4px" },
+        "Removes every version's content and embedding. Past mock orders stay."));
+  }
+}
+
+async function tryRead() {
+  const id = state.status && state.status.memories
+    ? Object.keys(state.status.memories).pop() : "mem_northstar_v1";
+  const result = await call("GET", `/memories/${id}`);
+  if (result.status === 403 || result.status === 404) {
+    addEvent({ actor: "System", tone: "info", kind: "denied",
+      headline: "Access denied. No procurement memory returned.",
+      facts: [["Tried to read", id, true]],
+      say: "Neither search nor a direct id reveals another team's memory." });
+  } else if (!result.ok) {
+    addEvent({ actor: "System", tone: "bad", headline: errorText(result) });
+  } else {
+    addEvent({ actor: "System", tone: "bad", headline: "Unexpected: memory was returned." });
+  }
+}
+
+async function forgetAll() {
+  if (!confirm("Forget every version of the Northstar policy? This cannot be undone.")) return;
+  const entries = Object.entries(state.status.memories || {});
+  for (const [id, version] of entries) {
+    const result = await call("POST", `/memories/${id}/forget`, { expected_version: version });
+    if (!result.ok) {
+      addEvent({ actor: "Shopper", tone: "bad",
+        headline: `Stopped at v${version}: ${errorText(result)}` });
+      await refresh();
+      return;
+    }
+    state.states[id] = "forgotten";
+  }
+  pending = [];
+  addEvent({ actor: "Shopper", tone: "ok", kind: "forgotten",
+    headline: "Policy forgotten",
+    facts: [
+      ["Removed", `Content and embedding of ${entries.map(([, v]) => `v${v}`).join(" and ")}`],
+      ["Linked records", "Redacted, metadata kept"],
+      ["Past mock orders", "Still exist; forgetting does not undo them"],
+    ],
+    say: "Forgetting the memory removes its authority for future actions." });
+  await refresh();
+}
+
+/* ---------- Steps ---------- */
+
+function renderSteps() {
+  const list = $("steps");
+  list.innerHTML = "";
+  STEPS.forEach((step, index) => {
+    const item = el("li", {
+      class: index < state.step ? "done" : index === state.step ? "current" : "",
+      onclick: async () => {
+        await choose(step.session);
+        if (step.agent) pickAgent(step.agent);
+      },
+    }, el("span", {}, step.title, el("small", {}, `${PEOPLE[step.session].name}${
+      PEOPLE[step.session].mode ? ", " + PEOPLE[step.session].mode : ""} · ${step.hint}`)));
+    list.append(item);
+  });
+}
+
+/* ---------- Extras ---------- */
+
+async function lookupMemory() {
+  const id = $("memory-id").value.trim();
+  if (!id) return;
+  const result = await call("GET", `/memories/${encodeURIComponent(id)}`);
+  addEvent(result.ok
+    ? { actor: "System", tone: "info", headline: `Memory ${id} is readable`,
+        facts: [["Version", result.data.version], ["Content", result.data.content]] }
+    : { actor: "System", tone: "info", headline: `Memory ${id}: ${errorText(result)}` });
+}
+
+async function lookupRun() {
+  const id = $("run-id").value.trim();
+  if (!id) return;
+  const result = await call("GET", `/runs/${encodeURIComponent(id)}`);
+  if (!result.ok) {
+    addEvent({ actor: "System", tone: "info", headline: `Run ${id}: ${errorText(result)}` });
+    return;
+  }
+  const r = result.data;
+  addEvent({ actor: "System", tone: "info", headline: `Run ${id}: ${r.status}`,
+    facts: [
+      ["User / agent", `${r.user_id} / ${r.agent_id}`], ["Team", r.team_id],
+      ["Memory", r.memory_id ? `v${r.memory_version} (${r.memory_id})` : "none", true],
+      ["Validation event", r.validation_event_id, true],
+      ["Purchasing record", r.purchasing_record_id || "None", true],
+      ["Redacted", r.redacted ? "Yes" : null],
+    ] });
+}
+
+async function replay() {
+  const id = $("record-id").value.trim();
+  if (!id) return;
+  const result = await call("POST", `/records/${encodeURIComponent(id)}/replay`);
+  addEvent(result.ok
+    ? { actor: "System", tone: result.data.same_record ? "ok" : "bad",
+        headline: result.data.same_record ? "Same record came back. No duplicate."
+          : "A different record came back.",
+        facts: [["Sent", result.data.original_id, true], ["Got", result.data.replayed_id, true]],
+        say: result.data.note }
+    : { actor: "System", tone: "bad", headline: errorText(result) });
+}
+
+function renderVersionControls(data) {
+  const box = $("version-controls");
+  box.innerHTML = "";
+  if (state.session !== "finance_admin") return;
+  for (const [id, version] of Object.entries(data.memories || {})) {
+    const row = el("div", { class: "row" }, el("span", { class: "mono", style: "flex:1" },
+      `${id} v${version}`));
+    for (const op of ["expire", "revoke"]) {
+      row.append(el("button", { onclick: async () => {
+        const result = await call("POST", `/memories/${id}/${op}`, { expected_version: version });
+        if (result.ok) state.states[id] = op === "expire" ? "Expired" : "Revoked";
+        addEvent({ actor: "Shopper", tone: result.ok ? "ok" : "bad",
+          headline: result.ok ? `${op === "expire" ? "Expired" : "Revoked"} v${version}`
+            : errorText(result) });
+        refresh();
+      } }, op[0].toUpperCase() + op.slice(1)));
+    }
+    box.append(row);
+  }
+}
+
+/* ---------- Status ---------- */
+
+async function refresh() {
+  const result = await call("GET", "/status", undefined, true);
+  if (!result.ok) return;
+  const data = result.data;
+  if (!data.ready) {
+    $("preparing").classList.add("show");
+    $("preparing-text").textContent = data.message;
+    setTimeout(refresh, 3000);
+    return;
+  }
+  $("preparing").classList.remove("show");
+  state.status = data;
+  if (data.session && data.session !== state.session) {
+    state.session = data.session;
+    for (const button of document.querySelectorAll("#who button")) {
+      button.classList.toggle("active", button.dataset.session === data.session);
+    }
+  }
+  $("database").textContent = data.database ? `Atlas database: ${data.database}` : "";
+  renderMemory(data);
+  renderVersionControls(data);
+  renderReview();
+}
+
+pickAgent("instinct");
+renderSteps();
+refresh();
+</script>
+</body>
+</html>
