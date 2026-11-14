@@ -6,6 +6,105 @@ Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Mem
 
 **Status:** Database foundation, scoped Vector Search, protected review/correction, guarded actions, lifecycle controls, and the connected Gemini/gateway/HTTP purchasing backend are implemented and tested. A live acceptance rehearsal verified behavior changes and purchasing/run references. Main application session routes, the end-user interface, and final interface acceptance remain unfinished. Features below are implemented only where explicitly marked complete.
 
+## Project description
+
+MemoryBank lets AI agents share memory while keeping people in control of what that memory
+allows them to do. It addresses a simple problem: if one agent stores a wrong or unauthorized
+instruction, another agent might later retrieve it and act on it. Recording who wrote the
+instruction is useful, but it does not make the instruction trustworthy.
+
+Our project separates suggested memory from approved memory. Agents can propose changes,
+but only an authorized person can make those changes actionable. Every approved memory has
+an organization and team scope, a version, an expiry date, and a record of its approval.
+
+The demo uses two simulated purchasing agents: **Muse** proposes shared policy updates, and
+**Instinct** retrieves approved policies to decide whether to request approval or create a
+mock draft order. The **Shopper** requests purchases and explicitly approves protected policy
+changes through a separate authorized reviewer session. These are presentation names for
+our existing agents and demo identities, not connections to external assistant products.
+
+Initially, Northstar purchases above USD 5,000 require approval. The Shopper requests a
+USD 7,000 purchase, so Instinct creates a mock approval request. Muse suggests increasing
+the limit to USD 10,000. The suggestion stays pending review, and repeating the purchase
+still requires approval. Only after an authorized person explicitly approves the change
+does MemoryBank supersede v1 and activate v2. The identical request can then create a mock
+draft order. The request stayed the same; approved memory changed the permitted action.
+
+The system also demonstrates isolation and forgetting. Another team cannot retrieve
+procurement's private policy. Forgetting a selected memory version removes its content and
+embedding and redacts controlled linked records. Without an applicable approved policy,
+Instinct must ask for clarification instead of creating another order. Forgetting does not
+undo completed actions or erase external records, backups, or provider logs.
+
+Each execution links the user, agent, supporting memory version, validation decision, and
+purchasing record. The application reads back the separate mock purchasing record before
+reporting success, distinguishing a verified result from an attempted action.
+
+MemoryBank is a prototype of accountable shared agent memory. It does not claim to detect
+every malicious instruction. It demonstrates enforceable boundaries: a suggestion is not
+approval, retrieval is not authority, and an agent cannot approve its own memory changes.
+The connected backend is tested; presentation and interface completion are tracked separately
+in the status and demo sections below.
+
+## How we use MongoDB Atlas
+
+We use **MongoDB Atlas and Atlas Vector Search** to store, retrieve, and govern shared agent
+memory. Atlas holds both the approved knowledge and the information our server checks before
+allowing memory changes or purchasing actions.
+
+### Collections and their purpose
+
+| Collection | What it stores | Why it matters |
+| --- | --- | --- |
+| `principals` | Users, agents, roles, enabled status, organizations, and teams | The server checks who is acting and which scope they can access. |
+| `memories` | Approved policies, terms, versions, embeddings, lifecycle status, and validity dates | Agents receive only applicable, active, approved memory. |
+| `memory_proposals` | Suggested changes, source information, and review status | A stored suggestion cannot silently become actionable memory. |
+| `memory_events` | Proposals, approvals, rejections, validation decisions, and lifecycle events | Reviewers can reconstruct governance decisions. |
+| `runs` | Execution outcomes linked to identities, memory versions, validation events, and purchasing records | We can connect a policy to the action it supported. |
+
+### Finding relevant memory with Atlas Vector Search
+
+Voyage AI converts policy text into embeddings: numerical representations of its meaning.
+We store these embeddings in Atlas and use Atlas Vector Search to find policies relevant to
+a purchase request. Voyage generates the embeddings; Atlas stores and searches them.
+
+Search filters restrict candidates by organization, team, and policy metadata. The application
+then checks each candidate against its current primary database record before exposing its
+content. It confirms scope, active status, validity dates, version, and embedding/content
+consistency. Similarity alone never authorizes a purchase.
+
+### Controlling changes with transactions, validation, and indexes
+
+Approval uses a MongoDB transaction to supersede the old memory, create the new active
+version, update the proposal, and record the decision together. Expected-version checks
+prevent an old proposal from replacing a newer policy. Unique indexes prevent duplicate
+policy versions and multiple active versions within a scope. Schema validation rejects
+documents that do not meet the required structure.
+
+Our Python gateway enforces application permissions using the identities and roles stored
+in Atlas. The server binds the user and agent identity; chat messages and model output
+cannot grant permissions. These checks are application logic backed by Atlas data, rather
+than a claim that database storage alone provides end-user authorization.
+
+### Connecting memory to verified actions
+
+The final action gate checks the current approved memory immediately before dispatch.
+Mock approval requests and draft orders are persisted in a separate SQLite-backed purchasing
+service. The application reads those records back over HTTP and stores the execution result
+and references in Atlas. An allowed validation decision is not reported as a verified action.
+Failures and uncertain outcomes remain visible.
+
+### Expiry, revocation, and forgetting
+
+The application checks validity dates and lifecycle status before allowing a memory to
+support an action. Expired or revoked memories cannot authorize new purchases. Forgetting
+removes a selected version's content and embedding and redacts controlled linked proposals,
+events, and runs while retaining minimal metadata. Other versions must be forgotten
+explicitly if their content must also be removed.
+
+Together, these features make Atlas more than a conversation store: it holds the scoped
+knowledge, approval history, and execution evidence needed to govern shared agent memory.
+
 ## The problem
 
 Two AI agents share long-term memory. Someone persuades Agent B to save a false or unauthorized instruction. Agent A later retrieves it and treats it as company policy.
