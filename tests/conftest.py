@@ -7,6 +7,9 @@ import pytest
 
 def pytest_addoption(parser):
     parser.addoption("--atlas", action="store_true", help="Run live Atlas checkpoint tests")
+    parser.addoption(
+        "--search", action="store_true", help="Also test real Voyage and Vector Search"
+    )
 
 
 @pytest.fixture(scope="module")

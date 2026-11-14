@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation and Voyage embedding preparation implemented and tested. Agent workflows, gateway authorization, Vector Search retrieval, and external actions remain planned. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation, Voyage embeddings, scoped Vector Search, and the gateway read path are implemented and tested. The separate mock purchasing service also exists. Memory-write governance, agent workflows, and coordinated action dispatch remain planned. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -259,11 +259,11 @@ adopt incompatible data. They do not yet prove authorization, search, or action 
 Identity IDs are `employee`, `finance_admin`, `other_team_user`, `agent_a`, and `agent_b`.
 The seed memory ID is `mem_northstar_v1`; its policy key is `supplier:northstar:purchasing`.
 Policies currently use whole-dollar nonnegative integer limits and USD. Seeding does not generate
-embeddings; use the separate preparation step below. Vector Search is not implemented yet.
+embeddings; use the separate preparation and search steps below.
 
-**The gateway is not connected yet.** The partner handoff follows implementation and tests of the
-gateway's proposal/review/retrieval/action-validation functions. Both sides should use these
-seed IDs and agree on gateway function inputs/outputs before connecting the agents.
+**Read-path handoff is ready:** the partner can connect `retrieve_memories` using the contract
+below. Proposal/review and action-validation functions remain unfinished; retrieval does not
+authorize dispatch. Both sides must use server-bound identities, not model-provided identity.
 
 ### Purchasing service
 
@@ -306,8 +306,8 @@ existing active v1. No existing Northstar record is overwritten or relinked.
 
 Try “Can I spend seven thousand dollars with Northstar without asking finance?” and a Bluebird
 purchase question after search is implemented. Search may return multiple candidates; the
-action gate must still check the actual supplier and policy type. Dataset tests do not prove
-search isolation or ranking. Vector Search remains to be implemented.
+action gate must still check the actual supplier and policy type. Dataset tests alone do not prove
+search isolation or ranking; real search checks are described in checkpoint 2B below.
 
 Run `python -m pytest tests/test_seed_fixtures.py -q` for the local dataset check without cloud
 access. Run the Atlas command above for the eight database checks.
@@ -337,7 +337,77 @@ them out. Embedding a record does not authorize access or make it actionable.
 Nine local tests check API boundaries. Two Atlas storage tests use explicitly simulated provider
 responses to test preservation and revocation races; they do not test Voyage quality or search.
 Separately, real Voyage preparation succeeded for all five application fixtures using `voyage-4`
-and 1,024 dimensions. Index creation and real scoped search are checkpoint 2B and remain unfinished.
+and 1,024 dimensions. Checkpoint 2B adds index creation and real scoped search below.
+
+### Checkpoint 2B: scoped Vector Search and read-path integration
+
+```bash
+python -m scripts.setup_indexes
+python -m scripts.search_memories "Can I spend seven thousand dollars with Northstar without asking finance?" --supplier northstar
+```
+
+The first command creates `memory_vectors` if absent and reports its status. Atlas builds it
+asynchronously: rerun until status is `READY` and queryable is true. Incompatible definitions
+are rejected rather than replaced. The index uses cosine similarity and dimensions from
+`EMBEDDING_DIM`, with filters for tenant, team, lifecycle, policy kind, supplier, start time,
+and embedding model/dimensions. No partner-owned configuration or dependency files were changed.
+
+The CLI uses a fixed developer session (`employee` with `agent_a` in procurement). It is not
+a login system or an interface that accepts arbitrary identity claims from chat.
+
+The gateway validates both enabled identities against stored company/team membership before
+embedding the query. It runs exact nearest-neighbor Vector Search (appropriate for the tiny
+demo dataset), then rechecks identities and each candidate on the primary database before
+returning content. It enforces active state, start/end dates, optional supplier, current version,
+and embedding/content agreement. Direct lookup by memory ID uses the same access/lifecycle
+checks. Neither embeddings nor raw provenance are returned to the model.
+
+End-date checks run on primary records, including open-ended policies. Expired candidates can
+reduce the returned count because search overfetching is bounded. A missing/building index is
+an explicit error, not a silent empty search. An empty valid search means clarification, never
+unlimited authority. Similarity is not proof that a memory applies to a proposed action.
+
+#### Python contract for the partner
+
+```python
+from memorybank.memory_gateway import MemoryGateway, ServerIdentity
+
+# db and the configured Embeddings instance are owned by server initialization.
+gateway = MemoryGateway(db, embedder)
+# Build from a trusted server session/tool binding, never model output or raw request fields.
+identity = ServerIdentity(user_id, agent_id, tenant_id, team_id)
+memories = gateway.retrieve_memories(identity, query_text, supplier_id=None)
+# Returns a list of {memory_id, version, policy_key, content, terms}.
+memory = gateway.get_memory(identity, memory_id)
+# Returns the same record shape, or None for an inaccessible/unusable/missing memory.
+```
+
+Invalid/disabled identities raise `AccessDenied`. Invalid arguments raise `ValueError`.
+Index readiness/configuration issues raise `RuntimeError`; provider/network failures propagate
+for the server to report without logging credentials. This read path does not supply HTTP
+authentication, write approval, run auditing, or final action authorization.
+
+#### Tests
+
+```bash
+python -m pytest tests/test_search_index.py -v
+python -m pytest tests/test_memory_reads.py --atlas -v
+python -m pytest tests/test_vector_search_live.py --atlas --search -v
+```
+
+Four local tests reject missing, building, wrong-type, and incompatible indexes. Thirteen Atlas
+read-boundary tests simulate stale candidates and check identity, scope, direct-ID protection,
+expiry, future/open-ended validity, lifecycle changes, supplier filtering, and content hashes.
+Three end-to-end tests use actual Voyage document/query vectors and a real temporary Atlas
+index: a Northstar paraphrase ranks correctly, Bluebird filtering works, and marketing cannot
+retrieve procurement's Northstar policy. Temporary test databases are removed afterward.
+
+`--atlas` alone does not call Voyage in tests. `--atlas --search` opts into two batched Voyage
+requests and temporary index creation, which can take several minutes. Free-tier limits or
+index readiness failures are reported as failures, not converted to mocked successes.
+
+Read-path integration is now possible. The next checkpoint implements proposals, protected
+review, atomic correction, and action validation. Do not wire purchase dispatch to retrieval alone.
 
 ## Demo sequence
 
@@ -352,14 +422,14 @@ and 1,024 dimensions. Index creation and real scoped search are checkpoint 2B an
 
 - [x] Atlas collections, validators, standard indexes, and seeds (checkpoint 1)
 - [x] Real Voyage embeddings for five synthetic memories and guarded preparation (checkpoint 2A)
-- [ ] Scoped Vector Search and primary-record rechecks
+- [x] Scoped Vector Search and primary-record rechecks (checkpoint 2B)
 - [ ] User/agent identity and gateway permissions
 - [ ] Proposal review and atomic versioned correction
 - [ ] Agent A and B tool flows
 - [x] Purchasing persistence, idempotency, and read-back verification
 - [ ] Events/runs tied to memory versions
 - [ ] Attack and legitimate-correction acceptance checks
-- [ ] Cross-team search and ID isolation
+- [x] Cross-team search and ID isolation (read path)
 - [ ] Expiry and forgetting
 - [ ] Minimal CLI/web interaction and accurate run commands
 
