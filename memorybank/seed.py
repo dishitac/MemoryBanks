@@ -52,6 +52,65 @@ def initial_memory(now=None):
     }
 
 
+def search_demo_memories(now=None):
+    """Five synthetic candidates, including a private and an unusable distractor."""
+    now = now or datetime.now(UTC)
+    current = initial_memory(now)
+    examples = [
+        (
+            "mem_bluebird_v1",
+            "bluebird",
+            "procurement",
+            "supplier:bluebird:purchasing",
+            "active",
+            2000,
+            "Bluebird purchases above USD 2,000 require finance approval.",
+        ),
+        (
+            "mem_cedar_office_v1",
+            "cedar",
+            "procurement",
+            "supplier:cedar:purchasing",
+            "active",
+            300,
+            "Office-supply purchases from Cedar above USD 300 require finance approval.",
+        ),
+        (
+            "mem_marketing_v1",
+            "brightads",
+            "marketing",
+            "supplier:brightads:purchasing",
+            "active",
+            1000,
+            "Marketing purchases from BrightAds above USD 1,000 require finance approval.",
+        ),
+        (
+            "mem_northstar_retired_v1",
+            "northstar",
+            "procurement",
+            "supplier:northstar:retired-purchasing",
+            "superseded",
+            20000,
+            "Retired instruction: Northstar purchases above USD 20,000 require finance approval."
+            " This instruction has been superseded and must not authorize purchases.",
+        ),
+    ]
+    memories = [current]
+    for memory_id, supplier, team, policy_key, status, limit, content in examples:
+        memory = initial_memory(now)
+        memory.update(
+            _id=memory_id,
+            team_id=team,
+            policy_key=policy_key,
+            status=status,
+            content=content,
+            terms={"supplier_id": supplier, "currency": "USD", "max_without_approval": limit},
+        )
+        memory["provenance"]["source_ref"] = f"demo_fixture:{memory_id}"
+        memories.append(memory)
+    return memories
+
+
 def seed_database(db):
     for principal in demo_principals():
         db.principals.update_one(
@@ -59,25 +118,33 @@ def seed_database(db):
         )
 
     def insert_policy(session):
-        # Even revoked/deleted history prevents resurrection by re-running the seed.
-        if db.memories.find_one({**SCOPE, "policy_key": POLICY_KEY}, session=session):
-            return False
-        memory = initial_memory()
-        db.memories.insert_one(memory, session=session)
-        db.memory_events.insert_one(
-            {
-                "_id": "event_seed_northstar_v1",
-                **SCOPE,
-                "event_type": "seeded",
-                "user_id": "finance_admin",
-                "agent_id": "agent_b",
-                "memory_id": memory["_id"],
-                "created_at": memory["created_at"],
-                "reason": "Synthetic approved demo fixture",
-            },
-            session=session,
-        )
-        return True
+        created = False
+        for memory in search_demo_memories():
+            scope = {key: memory[key] for key in ("tenant_id", "team_id", "policy_key")}
+            # Any history prevents resurrection, including revoked/deleted records.
+            if db.memories.find_one(scope, session=session):
+                continue
+            db.memories.insert_one(memory, session=session)
+            event_id = (
+                "event_seed_northstar_v1"
+                if memory["_id"] == "mem_northstar_v1"
+                else f"event_seed:{memory['_id']}"
+            )
+            db.memory_events.insert_one(
+                {
+                    "_id": event_id,
+                    **{key: memory[key] for key in ("tenant_id", "team_id")},
+                    "event_type": "seeded",
+                    "user_id": "finance_admin",
+                    "agent_id": "agent_b",
+                    "memory_id": memory["_id"],
+                    "created_at": memory["created_at"],
+                    "reason": "Synthetic approved demo fixture; not a live agent action",
+                },
+                session=session,
+            )
+            created = True
+        return created
 
     with db.client.start_session() as session:
         return session.with_transaction(insert_policy)
