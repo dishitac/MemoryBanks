@@ -30,9 +30,20 @@ terms and embedded before an atomic correction. Proposals are immutable through 
 payload fingerprints detect out-of-band edits. Approval preserves the expiry deadline.
 Fourteen local and thirteen Atlas tests cover the workflow. The real-Voyage demonstration
 `python -m scripts.demo_review` uses/removes only a disposable demo database.
-The partner can integrate retrieval, proposal creation and explicit review now. Keep review
-out of model tools. `validate_action` is not implemented, so retrieval must not authorize
-purchases. Future dispatch/lifecycle code must reuse `policy_lock` to coordinate with review.
+Checkpoint 4 adds `memorybank/actions.py`, `validate_action` (inspection only), and
+`validated_action` (synchronous context holding the shared policy lock across server dispatch).
+Both accept the partner's PurchaseAction fields. Allowed results contain a normalized payload
+with server-bound identities, not model identity. Above-limit draft orders are denied and
+require a separately validated finance-approval action. Clarification never authorizes an
+external action. Validation events are decisions, not verified execution receipts.
+Thirteen local and twenty-three Atlas tests cover the gate, including expiry during audit
+and concurrent corrections. `scripts.demo_action_gate` verifies real Voyage/Atlas and actual
+temporary SQLite writes via the partner's store functions, not the full Gemini/HTTP server.
+The main partner integration checkpoint is reached. Keep review out of model tools. Person 2
+must dispatch immediately inside `validated_action`, verify external state, and record runs.
+No await/sleep/LLM calls/queueing inside the guard; run the whole block in one synchronous
+worker thread, and use a single server process. Person 1 still owns lifecycle controls;
+expire/revoke/forget must reuse `policy_lock` to coordinate with dispatch and review.
 The purchasing service and Gemini interpretation helpers are implemented by the partner;
 end-user orchestration and coordinated dispatch remain unfinished.
 Keep status and runnable instructions accurate. Use the seed IDs and commands in
