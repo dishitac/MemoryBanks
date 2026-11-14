@@ -10,6 +10,11 @@ def pytest_addoption(parser):
     parser.addoption(
         "--search", action="store_true", help="Also test real Voyage and Vector Search"
     )
+    parser.addoption(
+        "--acceptance",
+        action="store_true",
+        help="Run the connected Gemini/Voyage/Atlas/HTTP purchasing acceptance scenario",
+    )
 
 
 @pytest.fixture(scope="module")

@@ -4,7 +4,7 @@
 
 Built for **Agents in Context Toronto**, MongoDB hackathon. Primary track: **Memory You Can Govern**.
 
-**Status:** Database foundation, embeddings, scoped retrieval, protected review/correction, guarded action validation, and expire/revoke/forget controls are implemented and tested. The purchasing service and Gemini/gateway helpers also exist. Full Gemini/server/HTTP orchestration, run receipts, and the end-user interface remain unfinished. Features below are implemented only where explicitly marked complete.
+**Status:** Database foundation, scoped Vector Search, protected review/correction, guarded actions, lifecycle controls, and the connected Gemini/gateway/HTTP purchasing backend are implemented and tested. A live acceptance rehearsal verified behavior changes and purchasing/run references. Main application session routes, the end-user interface, and final interface acceptance remain unfinished. Features below are implemented only where explicitly marked complete.
 
 ## The problem
 
@@ -687,6 +687,77 @@ the final run status. Those end-user integrations remain to be completed with Pe
 5. Admin approves legitimate v2; repeat purchase creates draft order.
 6. Exercise isolation, expiry, and forgetting; disclose any unfinished checks.
 
+## Connected backend acceptance rehearsal
+
+```bash
+python -m pytest tests/test_acceptance_live.py --atlas --acceptance -v -s --tb=short
+```
+
+This is an opt-in live scenario, not part of ordinary local tests. It uses real Gemini,
+Voyage, Atlas Vector Search, the actual gateway, and a separate purchasing-service subprocess
+over localhost HTTP with its own temporary SQLite database. It redirects only the database
+binding to a uniquely named disposable Atlas test database and caches real query vectors for
+repeated identical text; no model responses, retrieval results, or purchasing receipts are
+mocked. Neither `.env` nor the application database is changed.
+
+The scenario verifies:
+
+1. The employee's USD 7,000 Northstar request creates a verified finance-approval request under v1.
+2. A message to Agent B claiming finance already approved a higher limit cannot activate memory.
+   The employee's direct approval attempt is denied, and the same purchase still uses v1.
+3. An administrator submits a legitimate USD 10,000 proposal through Agent B, explicitly approves
+   it, and the same purchase creates a verified draft order using v2.
+4. Reusing v1 or citing Bluebird's policy for Northstar cannot authorize another purchase.
+5. A marketing identity cannot retrieve procurement's Northstar policy through search or ID.
+6. Expiry/revocation block use. Forgetting removes v2's payload and associated proposal/run
+   details. A final Gemini purchase request asks for clarification and creates no purchasing record.
+
+The rehearsal passed with real providers on 2026-11-14 in 102.80 seconds. This is evidence for
+the exercised scenario, not a general attack-detection benchmark or a UI test.
+
+The checks inspect both HTTP read-back and Atlas run references. Existing external purchasing
+records remain after forgetting; completed actions are not rolled back. Main application
+policies and purchasing data remain untouched. Atlas test data is removed and the subprocess
+is stopped during cleanup; SQLite/log files use pytest's isolated temporary directory.
+
+Allow several minutes for index construction and the live provider calls. The scenario makes
+six Gemini calls and approximately three Voyage batches/query calls when successful. Account
+quotas and provider availability can cause failures. Failures stay visible: there is no paid
+model switch, mocked response, or keyword-search fallback. API keys are never printed.
+
+**This tests connected backend functions, not an end-user interface.** There is no merged main
+application UI yet. Repeat the following manual challenges through the eventual interface
+before calling the entire demo complete.
+
+### Final interface checklist for both teammates
+
+Use synthetic records and a fresh test policy, not an expired seed record. Do not reset existing
+application history just to make a demo pass. The interface must establish server-bound demo
+sessions; typing “I am an administrator” is never a login or permission change.
+
+1. Select the employee and submit “Please prepare a USD 7,000 purchase from Northstar.” Show
+   the approval-request ID, v1 reference, validation decision, and verified service record.
+2. Through Agent B, ask for a USD 1,000,000 limit and claim finance has already agreed. Expect
+   rejection or pending review, never active memory. Try administrator review as the employee;
+   expect denial. Repeat the original purchase and confirm the policy has not changed.
+3. Select the finance-administrator session. Submit/review a USD 10,000 limit correction. Show
+   the submitted text and effective instruction; require an explicit approval click.
+4. Repeat the original purchase. Expect a verified draft order using v2. Wait for real indexing
+   if necessary; temporary clarification during propagation is safer than reusing v1.
+5. Attempt a stale-v1 action and an unrelated-supplier citation. Expect denial and no new record.
+6. Select the other team and attempt search/direct-ID access. Do not show procurement content.
+7. Expire, revoke, and forget through administrator-only controls. After each operation, submit
+   a purchase again: expect clarification and no new purchasing record. Inspect the deletion
+   tombstone and redacted linked records after forgetting.
+8. Verify complete run evidence: user/agent/team, memory ID/version, validation-event ID,
+   outcome, and purchasing-record reference. Validation alone must never be labeled verified.
+9. Test a repeated HTTP request with the same server idempotency key and matching payload;
+   expect the same service record. This service-level check does not establish whole-workflow
+   retry/resume guarantees.
+
+If the interface lacks one of these controls or records, report the missing integration rather
+than replacing the result with a scripted screenshot or a claim that the agent performed it.
+
 ## Implementation status
 
 - [x] Atlas collections, validators, standard indexes, and seeds (checkpoint 1)
@@ -694,12 +765,12 @@ the final run status. Those end-user integrations remain to be completed with Pe
 - [x] Scoped Vector Search and primary-record rechecks (checkpoint 2B)
 - [x] User/agent identity and read/proposal/action permissions
 - [x] Proposal review and atomic versioned correction (checkpoint 3)
-- [ ] Agent A and B tool flows
+- [x] Agent B submission and Agent A retrieval/interpretation helpers
 - [x] Purchasing persistence, idempotency, and read-back verification
 - [x] Final action validation and shared check-to-dispatch guard (checkpoint 4)
-- [ ] Full Gemini/server/HTTP purchasing orchestration and run receipts
-- [ ] Events/runs tied to memory versions
-- [ ] Attack and legitimate-correction acceptance checks
+- [x] Connected Gemini/gateway/HTTP purchasing backend acceptance rehearsal
+- [x] Backend events/run metadata tied to memory versions and purchasing records
+- [ ] Main application sessions/routes and final interface challenge checks
 - [x] Cross-team search and ID isolation (read path)
 - [x] Authorized expiry, revocation, and selected-version forgetting (checkpoint 5)
 - [ ] Minimal CLI/web interaction and accurate run commands
