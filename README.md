@@ -218,7 +218,7 @@ python -m pytest tests/test_llm.py -q
 
 Those tests do not call Gemini. A live call still needs `LLM_API_KEY`.
 
-`submit_proposal` is Agent B's submission step. The server passes a `ServerIdentity` and `source_kind`. The function sends the interpreted proposal to `propose_change` and accepts only `rejected` or `pending_review`. That write method is not on the gateway yet, so tests use a fake. Agent B does not retrieve memory, approve a proposal, or create a purchasing record.
+`submit_proposal` is Agent B's submission step. The server passes a `ServerIdentity` and `source_kind`. The function sends the interpreted proposal to `propose_change` and accepts only `rejected` or `pending_review`. `submit_stored_proposal` builds `MemoryGateway` from the Atlas and Voyage settings and passes that gateway in. It needs a reachable database. The tests pass a fake gateway and do not open Atlas. Agent B does not retrieve memory, approve a proposal, or create a purchasing record. A proposal for an unknown policy key comes back `rejected`.
 
 After updating dependencies, run `python -m pip install -e ".[dev]"` inside the active virtual environment. Use synthetic demo data.
 
