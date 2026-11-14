@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "memorybank"
 version = "0.1.0"
-description = "MemoryBank: a support agent whose memory can be corrected, expired and forgotten."
+description = "MemoryBank: governed shared memory for purchasing agents."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["memorybank*", "ticket_service*", "purchasing_service*"]
+include = ["memorybank*", "purchasing_service*"]
 
 [tool.ruff]
 line-length = 100

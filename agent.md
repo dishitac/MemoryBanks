@@ -14,8 +14,16 @@ of the existing active v1. Checkpoint 2A adds `memorybank/embeddings.py` and
 `python -m scripts.embed_memories`: real Voyage document/query helpers, response validation,
 model/dimension/content-hash metadata, and guarded fixture updates. Nine local boundary tests
 and two Atlas storage tests cover this work; the storage tests explicitly simulate API responses,
-while real Voyage embedding preparation was verified separately. Vector Search, gateway,
-agents, and purchasing integration remain unimplemented.
+while real Voyage embedding preparation was verified separately. Checkpoint 2B implements
+`memorybank/search.py`, index setup and search CLI scripts, and the read side of
+`memorybank/memory_gateway.py`. Use `MemoryGateway(db, embedder).retrieve_memories(identity,
+query_text, supplier_id=None)` with a server-created `ServerIdentity`; response records contain
+only `memory_id`, `version`, `policy_key`, `content`, and `terms`. `get_memory` provides protected
+direct-ID reads. Four local index tests, thirteen Atlas read-boundary tests, and three real
+Voyage/Vector Search tests cover this checkpoint. Tests call Voyage only with `--atlas --search`.
+The partner can integrate retrieval now; write/review operations and `validate_action` are not
+implemented, so retrieval must not authorize purchases. The mock purchasing service is already
+implemented by the partner; agents and coordinated dispatch remain unfinished.
 Keep status and runnable instructions accurate. Use the seed IDs and commands in
 README. Do not reseed by deleting or resetting existing policies.
 
